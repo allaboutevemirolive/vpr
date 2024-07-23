@@ -1,0 +1,167 @@
+┌────────────┬─────┬─────┐
+│  (index)   │ MIN │ MAX │
+├────────────┼─────┼─────┤
+│  STATIONS  │  3  │ 10  │
+│  DISTANCE  │  1  │ 100 │
+│ DELIVERIES │  2  │ 10  │
+│   TRAINS   │  2  │  8  │
+│  CAPACITY  │ 20  │ 100 │
+│ MULTIPLIER │  1  │ 40  │
+└────────────┴─────┴─────┘
+--------------------------
+multiplier is set to 1
+
+
+ stored the generated input data in assets/tmp.json
+
+  run the solution with
+  npm start assets/tmp.json
+
+input path: "assets/tmp.json"
+{
+  stations: [ 'A', 'B', 'C', 'D', 'E' ],
+  edges: [ 'E1,A,B,23', 'E2,B,C,84', 'E3,C,D,58', 'E4,D,E,28' ],
+  deliveries: [
+    'K1,19,C,A',
+    'K2,82,C,B',
+    'K3,3,B,D',
+    'K4,34,D,C',
+    'K5,52,B,D',
+    'K6,87,B,E',
+    'K7,29,B,D',
+    'K8,35,A,E'
+  ],
+  trains: [ 'Q1,23,C', 'Q2,63,B', 'Q3,91,B', 'Q4,82,D' ]
+}
+
+starting solution in 3 seconds...
+=====================================================================================
+{ A: 0, B: 1, C: 2, D: 3, E: 4 }
+{
+  A: [ 'B' ],
+  B: [ 'A', 'C' ],
+  C: [ 'B', 'D' ],
+  D: [ 'C', 'E' ],
+  E: [ 'D' ]
+}
+{
+  'A-B': 23,
+  'B-A': 23,
+  'B-C': 84,
+  'C-B': 84,
+  'C-D': 58,
+  'D-C': 58,
+  'D-E': 28,
+  'E-D': 28
+}
+[ 'Q1', 'Q2', 'Q3', 'Q4' ]
+{
+  K1: Symbol(AT_PICKUP),
+  K2: Symbol(AT_PICKUP),
+  K3: Symbol(AT_PICKUP),
+  K4: Symbol(AT_PICKUP),
+  K5: Symbol(AT_PICKUP),
+  K6: Symbol(AT_PICKUP),
+  K7: Symbol(AT_PICKUP),
+  K8: Symbol(AT_PICKUP)
+}
+{ Q1: 'C', Q2: 'B', Q3: 'B', Q4: 'D' }
+{ Q1: 23, Q2: 63, Q3: 91, Q4: 82 }
+{ Q1: [], Q2: [], Q3: [], Q4: [] }
+{ Q1: 0, Q2: 0, Q3: 0, Q4: 0 }
+{
+  K1: 'Q1',
+  K2: 'Q3',
+  K3: 'Q2',
+  K4: 'Q4',
+  K5: 'Q2',
+  K6: 'Q3',
+  K7: 'Q2',
+  K8: 'Q2'
+}
+_____________________________________________________________________________________
+still got 8 deliveries to do
+package "K1" pickup is where train already is: "C"
+move "Q1" to dropoff "K1" at "A"
+found 0 candidates for "Q1"
+found 1 candidates for "Q1"
+loading up candidate: "K3" onto "Q1"
+still got 7 deliveries to do
+move "Q3" to pickup "K2" from "C"
+found 0 candidates for "Q3"
+still got 7 deliveries to do
+package "K2" pickup is where train already is: "C"
+move "Q3" to dropoff "K2" at "B"
+found 0 candidates for "Q3"
+still got 6 deliveries to do
+move "Q1" to dropoff "K3" at "D"
+found 0 candidates for "Q1"
+found 0 candidates for "Q1"
+found 0 candidates for "Q1"
+still got 5 deliveries to do
+package "K4" pickup is where train already is: "D"
+move "Q4" to dropoff "K4" at "C"
+found 0 candidates for "Q4"
+still got 4 deliveries to do
+package "K5" pickup is where train already is: "B"
+move "Q2" to dropoff "K5" at "D"
+found 0 candidates for "Q2"
+found 0 candidates for "Q2"
+still got 3 deliveries to do
+package "K6" pickup is where train already is: "B"
+move "Q3" to dropoff "K6" at "E"
+found 0 candidates for "Q3"
+found 0 candidates for "Q3"
+found 0 candidates for "Q3"
+still got 2 deliveries to do
+move "Q4" to pickup "K7" from "B"
+found 0 candidates for "Q4"
+still got 2 deliveries to do
+package "K7" pickup is where train already is: "B"
+move "Q4" to dropoff "K7" at "D"
+found 0 candidates for "Q4"
+found 0 candidates for "Q4"
+still got 1 deliveries to do
+move "Q2" to pickup "K8" from "A"
+found 0 candidates for "Q2"
+found 0 candidates for "Q2"
+found 0 candidates for "Q2"
+still got 1 deliveries to do
+package "K8" pickup is where train already is: "A"
+move "Q2" to dropoff "K8" at "E"
+found 0 candidates for "Q2"
+found 0 candidates for "Q2"
+found 0 candidates for "Q2"
+found 0 candidates for "Q2"
+#####################################################################################
+  OK  All packages have been delivered.
+[
+  'W=0, T=Q1, N1=C, P1=[K1], N2=B, P2=[], L=[K1]',
+  'W=84, T=Q1, N1=B, P1=[K3], N2=A, P2=[K1], L=[K3]',
+  'W=0, T=Q3, N1=B, P1=[], N2=C, P2=[], L=[]',
+  'W=84, T=Q3, N1=C, P1=[K2], N2=B, P2=[K2], L=[]',
+  'W=107, T=Q1, N1=A, P1=[], N2=B, P2=[], L=[K3]',
+  'W=130, T=Q1, N1=B, P1=[], N2=C, P2=[], L=[K3]',
+  'W=214, T=Q1, N1=C, P1=[], N2=D, P2=[K3], L=[]',
+  'W=0, T=Q4, N1=D, P1=[K4], N2=C, P2=[K4], L=[]',
+  'W=0, T=Q2, N1=B, P1=[K5], N2=C, P2=[], L=[K5]',
+  'W=84, T=Q2, N1=C, P1=[], N2=D, P2=[K5], L=[]',
+  'W=168, T=Q3, N1=B, P1=[K6], N2=C, P2=[], L=[K6]',
+  'W=252, T=Q3, N1=C, P1=[], N2=D, P2=[], L=[K6]',
+  'W=310, T=Q3, N1=D, P1=[], N2=E, P2=[K6], L=[]',
+  'W=58, T=Q4, N1=C, P1=[], N2=B, P2=[], L=[]',
+  'W=142, T=Q4, N1=B, P1=[K7], N2=C, P2=[], L=[K7]',
+  'W=226, T=Q4, N1=C, P1=[], N2=D, P2=[K7], L=[]',
+  'W=142, T=Q2, N1=D, P1=[], N2=C, P2=[], L=[]',
+  'W=200, T=Q2, N1=C, P1=[], N2=B, P2=[], L=[]',
+  'W=284, T=Q2, N1=B, P1=[], N2=A, P2=[], L=[]',
+  'W=307, T=Q2, N1=A, P1=[K8], N2=B, P2=[], L=[K8]',
+  'W=330, T=Q2, N1=B, P1=[], N2=C, P2=[], L=[K8]',
+  'W=414, T=Q2, N1=C, P1=[], N2=D, P2=[], L=[K8]',
+  'W=472, T=Q2, N1=D, P1=[], N2=E, P2=[K8], L=[]'
+]
+(Time elapsed + the final leg of journey duration)
+Solution time is: 500
+BENCH: 36.13ms
+
+   DONE

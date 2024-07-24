@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 
 fn main() {
     let mut stations = Stations::new();
@@ -50,7 +51,7 @@ fn main() {
     dbg!(&graph);
 
     let mut dist_map = DistanceMap::new();
-    dist_map.init_key_value(graph, edges, stations);
+    dist_map.init_key_value(graph.clone(), edges, stations.clone());
     dist_map.sorted_entries();
 
     dbg!(&dist_map);
@@ -58,6 +59,8 @@ fn main() {
     let mut package_map = find_train_candidates(&packages, &trains);
 
     dbg!(&package_map);
+
+    let mut train_movement = TrainMovement::new();
 
     while !packages.empty() {
         for (_, mut pkg) in packages.clone().enumerate_packages() {
@@ -71,20 +74,44 @@ fn main() {
                         pkg.set_status(PackageStatus::InTransit);
                         train.load_package(pkg.clone());
                     } else {
+                        // let (mut direction, mut next_station) = get_next(
+                        //     &train,
+                        //     stations.get_station_name(pkg.from()).unwrap(),
+                        //     &graph,
+                        //     &dist_map,
+                        //     &stations,
+                        // );
+
+                        // dbg!(&next_station);
+                        // dbg!(&direction);
+
                         // move to the package index
                         // If:
                         // - The train has enough capacity to carry the package.
                         // - The package is at the pickup location.
                         // - The package is currently at the same station as the train.
                         // Then: loaded the package onto the train
-
+                        dbg!(&pkg.from());
+                        dbg!(&pkg.to());
+                        dbg!(&train.current_index());
+                        // Check if we can pick packages along the road
                         while train.current_index() != pkg.to() {
+                            let (mut direction, mut next_station) = get_next(
+                                &train,
+                                stations.get_station_name(pkg.from()).unwrap(),
+                                &graph,
+                                &dist_map,
+                                &stations,
+                            );
+
+                            // dbg!("SOme");
                             let mut pkg_candidates: Vec<Package> = Vec::new();
                             // TODO: Remove unused variable
                             // let mut remaining_capacity: u32 = 0;
 
                             // For each packages, we check if it abide by our rule and the weight doesnt exceed current train
                             for (_, pkg_in_road) in packages.clone().enumerate_packages() {
+                                // dbg!("{}", &pkg_in_road);
                                 let loadable_in_carriage =
                                     train.remain_capacity() >= pkg_in_road.weight();
 
@@ -110,9 +137,92 @@ fn main() {
                                 train.load_package(pkg);
                             }
 
-                            // -----
-                            //
+                            // let mut picked_pkgs: Vec<Package> = vec![];
+
+                            // // Filter package
+                            // for pkg_train in train.packages.clone() {
+                            //     if pkg_train.from() == train.current_index() {
+                            //         picked_pkgs.push(pkg_train);
+                            //     }
+                            // }
+
+                            let mut picked_pkgs: Vec<Package> = vec![];
+
+                            for pkg_train in train.packages.clone() {
+                                if pkg_train.to()
+                                    == stations.get_station_idx(next_station.clone()).unwrap()
+                                {
+                                    picked_pkgs.push(pkg_train);
+                                }
+                            }
+
+                            // Unload
+                            // Remove package from Train's carriage
+                            for pkg in picked_pkgs {
+                                // No package in train's carriage
+                                if !train.already_load_package(pkg.clone()) {
+                                    continue;
+                                }
+
+                                // remove package from train's carriage
+                                train.remove_package(pkg.clone());
+
+                                // remove package from the Package Collection
+                                packages.pop(pkg.clone());
+                                train_movement.load_package(pkg);
+                                // TODO: Mark package as delivered
+                            }
+
+                            train_movement.with_time(train.time());
+                            train_movement.with_train(train.name().to_string());
+                            train_movement.with_from(train.current_index());
+                            train_movement
+                                .with_to(stations.get_station_idx(next_station.clone()).unwrap());
+
+                            dbg!(&train_movement);
+
+                            let dist = dist_map.get_distance(
+                                stations
+                                    .get_station_name(train.current_index())
+                                    .unwrap()
+                                    .clone(),
+                                next_station.clone(),
+                            );
+
+                            train.accumulate_time(dist.parse::<u32>().unwrap());
+
+                            train.update_current_idx(
+                                stations.get_station_idx(next_station.clone()).unwrap(),
+                            );
+
+                            // dbg!(&stations.get_station_idx(next_station.clone()).unwrap());
+                            // dbg!(&next_station);
+
+                            // dbg!("{}", &train.current_index());
+                            // dbg!("{}", &pkg.to());
+
+                            direction = get_next(
+                                &train,
+                                stations.get_station_name(pkg.from()).unwrap(),
+                                &graph,
+                                &dist_map,
+                                &stations,
+                            )
+                            .0;
+
+                            next_station = get_next(
+                                &train,
+                                stations.get_station_name(pkg.from()).unwrap(),
+                                &graph,
+                                &dist_map,
+                                &stations,
+                            )
+                            .1;
+
+                            // TODO: We should pop something
                         }
+
+                        // ----
                     }
                 }
             }
@@ -122,15 +232,59 @@ fn main() {
     }
 }
 
-// pub fn find_package_candidates(package: &Package, train: &Train, pack) -> (Vec<Package>, u32) {
-//     let loadable_in_carriage = train.remain_capacity() >= package.weight();
-//     let is_awaiting_pickup = *package.status() == PackageStatus::AwaitingPickup;
+#[derive(PartialEq, Eq, Debug)]
+enum Direction {
+    Left,
+    Right,
+}
 
-//     // TODO: Check if the index is move or not for this whole operation
-//     let pkg_in_train_loc = package.from() == train.current_index();
+fn get_next(
+    train: &Train,
+    to: &str,
+    graph: &Graph,
+    dist_map: &DistanceMap,
+    stations: &Stations,
+) -> (Direction, String) {
+    let current_station = stations.get_station_name(train.current_index()).unwrap();
+    let neighbors = graph.graph.get(current_station).unwrap();
 
-//     if loadable_in_carriage && is_awaiting_pickup && pkg_in_train_loc {}
-// }
+    // Check Destination:
+    for neighbor in neighbors {
+        if neighbor == to {
+            if neighbors[0] == to {
+                return (Direction::Left, neighbor.to_string());
+            } else {
+                return (Direction::Right, neighbor.to_string());
+            }
+        }
+    }
+
+    // Handle Case of Only One Neighbor:
+    if neighbors.len() == 1 {
+        return (Direction::Left, neighbors[0].to_string()); // Choose the only available direction
+    }
+
+    // Compare Distances:
+    let left_distance = dist_map
+        .dm
+        .get(&(current_station.clone(), neighbors[0].clone()))
+        .copied() // Use copied() for Option<u32> to u32 if possible
+        .unwrap_or(u32::MAX); // Handle potential missing distance
+    let right_distance = dist_map
+        .dm
+        .get(&(current_station.clone(), neighbors[1].clone()))
+        .copied()
+        .unwrap_or(u32::MAX);
+
+    if left_distance < right_distance {
+        (Direction::Left, neighbors[0].to_string())
+    } else if left_distance > right_distance {
+        (Direction::Right, neighbors[1].to_string())
+    } else {
+        // If distances are equal, default to left
+        (Direction::Left, neighbors[0].to_string())
+    }
+}
 
 // TODO: Write test
 // Check if capacity is not enough.
@@ -537,6 +691,22 @@ impl Train {
         self.packages.push(pkg);
         self.remain_capacity = rem_cap;
     }
+
+    pub fn remove_package(&mut self, pkg: Package) {
+        let mut rm_idx: usize = 0;
+        for (index, package) in self.packages.clone().iter().enumerate() {
+            if package.name() == pkg.name() {
+                rm_idx = index;
+                break;
+            }
+        }
+
+        self.packages.remove(rm_idx);
+    }
+
+    pub fn update_current_idx(&mut self, index: u32) {
+        self.current = index
+    }
 }
 
 /// All trains
@@ -573,12 +743,12 @@ impl Trains {
         self.trains.push(train);
     }
 
-    fn enumerate_trains(&self) -> impl Iterator<Item = (usize, &Train)> {
+    pub fn enumerate_trains(&self) -> impl Iterator<Item = (usize, &Train)> {
         self.trains.iter().enumerate()
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Graph {
     graph: HashMap<String, Vec<String>>,
 }
@@ -607,7 +777,7 @@ impl Graph {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DistanceMap {
     dm: HashMap<(String, String), u32>,
 }
@@ -660,10 +830,20 @@ impl DistanceMap {
         entries.sort_by_key(|&((ref a, ref b), _)| (a.clone(), b.clone()));
         entries
     }
+
+    /// Get time taken between 2 nodes
+    pub fn get_distance(&self, start: String, end: String) -> String {
+        self.dm
+            .get(&(start.to_string(), end.to_string()))
+            .or_else(|| self.dm.get(&(end.to_string(), start.to_string())))
+            .copied()
+            .unwrap_or(0)
+            .to_string()
+    }
 }
 
 #[derive(Debug, Clone)]
-pub struct TrainMove {
+pub struct TrainMovement {
     time: u32,
     train: String,
     from: u32,
@@ -672,7 +852,25 @@ pub struct TrainMove {
     packages: Vec<Package>,
 }
 
-impl TrainMove {
+impl fmt::Display for TrainMovement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "W={}", self.time)?;
+        write!(f, ", ")?;
+        write!(f, "T={}", self.train)?;
+        write!(f, ", ")?;
+        write!(f, "N1={}", self.from)?;
+        write!(f, ", ")?;
+        write!(f, "P1=[{:?}]", self.packages)?;
+        write!(f, ", ")?;
+        write!(f, "N2={}", self.to)?;
+        // write!(f, ", ")?;
+        // write!(f, "P2=[{}]", self.dropped_off.join(" "))?;
+        // TODO: Add `in_carriage`
+        Ok(())
+    }
+}
+
+impl TrainMovement {
     pub fn new() -> Self {
         Self {
             time: 0,
@@ -761,7 +959,7 @@ impl TrainMove {
 //     }
 // }
 
-// impl fmt::Display for TrainMove {
+// impl fmt::Display for TrainMovement {
 //     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 //         write!(f, "W={}", self.time)?;
 //         write!(f, ", ")?;

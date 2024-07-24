@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 fn main() {
     let mut stations = Stations::new();
     stations.push(Station::new("A".to_string()));
@@ -40,6 +42,102 @@ fn main() {
         Package::default(),
         0,
     );
+
+    let mut graph = Graph::new();
+    graph.init_key(stations.clone());
+    graph.init_value(edges.clone(), stations.clone());
+
+    dbg!(&graph);
+
+    let mut dist_map = DistanceMap::new();
+    dist_map.init_key_value(graph, edges, stations);
+    dist_map.sorted_entries();
+
+    dbg!(&dist_map);
+
+    // Check if capacity is not enough.
+    // Then check if candidates_train and current_train iteration are close to current package iteration.
+    // If both trains (candidates and current) have the same distance to reach the current package, check which train has less time to reach the package iteration.
+    // Train with lesser time to reach the package and has the shortest distance to package will be store in HashMap
+    // The overall answer will be stored in Hashmap.
+
+    while !packages.empty() {
+        for (_, pkg) in packages.clone().enumerate_packages() {
+            if *pkg.status() == PackageStatus::AwaitingPickup {
+                let package_map = find_train_candidates(&packages, &trains);
+
+                dbg!(package_map);
+            }
+
+            packages.pop(pkg);
+        }
+    }
+}
+
+fn find_train_candidates(packages: &Packages, trains: &Trains) -> PackageTrainMapping {
+    let mut package_train_map = PackageTrainMapping::new();
+    let mut candidate_train: Option<Train> = None;
+    let mut min_distance: u32 = u32::MAX;
+
+    for (_, pkg) in packages.clone().enumerate_packages() {
+        if *pkg.status() == PackageStatus::AwaitingPickup {
+            for (_, train) in trains.enumerate_trains() {
+                if train.capacity() < pkg.weight() {
+                    continue;
+                }
+
+                let diff = get_diff(pkg.from(), train.origin());
+
+                if diff < min_distance
+                    || (diff == min_distance
+                        && train.time
+                            < candidate_train.as_ref().map(|t| t.time).unwrap_or(u32::MAX))
+                {
+                    candidate_train = Some(train.clone());
+                    min_distance = diff;
+                }
+            }
+        }
+
+        if let Some(train) = candidate_train {
+            package_train_map.assign_package(pkg.name(), &train.name);
+        }
+
+        candidate_train = None;
+        min_distance = u32::MAX;
+    }
+
+    package_train_map
+}
+
+fn get_diff(a: u32, b: u32) -> u32 {
+    if a > b {
+        a - b
+    } else {
+        b - a
+    }
+}
+
+#[derive(Debug)]
+struct PackageTrainMapping {
+    mapping: HashMap<String, String>,
+}
+
+impl PackageTrainMapping {
+    fn new() -> Self {
+        Self {
+            mapping: HashMap::new(),
+        }
+    }
+
+    fn assign_package(&mut self, package_name: &str, train_name: &str) {
+        self.mapping
+            .insert(package_name.to_string(), train_name.to_string());
+    }
+
+    fn get_train_for_package(&self, package_name: &str) -> Option<&String> {
+        self.mapping.get(package_name)
+    }
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -53,8 +151,8 @@ impl Station {
     }
 }
 
-#[derive(Clone)]
 /// All stations
+#[derive(Clone)]
 pub struct Stations {
     pub stations: Vec<Station>,
 }
@@ -135,6 +233,7 @@ impl Edge {
 }
 
 /// All posible routes exist for trains to delivered various packages
+#[derive(Clone)]
 pub struct Edges {
     edges: Vec<Edge>,
 }
@@ -223,7 +322,7 @@ impl Package {
 }
 
 /// All packages
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Packages {
     packages: Vec<Package>,
 }
@@ -237,6 +336,26 @@ impl Packages {
 
     pub fn push(&mut self, package: Package) {
         self.packages.push(package)
+    }
+
+    pub fn pop(&mut self, package: Package) {
+        let mut index = 0;
+        let mut found = false;
+        for (idx, pkg) in self.clone().enumerate_packages() {
+            if package.name() == pkg.name() {
+                index = idx;
+                found = true;
+                break;
+            }
+        }
+
+        if found {
+            self.packages.remove(index);
+        }
+    }
+
+    pub fn empty(&self) -> bool {
+        self.packages.is_empty()
     }
 
     pub fn push_with(
@@ -257,7 +376,7 @@ impl Packages {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Train {
     name: String,
     /// Maximum weight, a train can carry packages. A train can carry `MORE` than 1 packages if
@@ -307,6 +426,21 @@ impl Train {
     pub fn push_packages(&mut self, package: Package) {
         self.packages.push(package)
     }
+
+    pub fn origin(&self) -> u32 {
+        self.origin
+    }
+
+    pub fn current_index(&self) -> u32 {
+        self.current
+    }
+    pub fn time(&self) -> u32 {
+        self.time
+    }
+
+    pub fn accumulate_time(&mut self, time_taken: u32) {
+        self.time += time_taken
+    }
 }
 
 /// All trains
@@ -339,28 +473,139 @@ impl Trains {
     }
 }
 
-// Our solution
-// #[derive(Debug, Clone)]
-// pub struct TrainMove {
-//     /// Time taken to delivering all packages
-//     time: u32,
-//     train_id: String,
+#[derive(Debug)]
+pub struct Graph {
+    graph: HashMap<String, Vec<String>>,
+}
 
-//     /// Current station
-//     start_node: String,
-//     /// Does train pick-up any packages at start_node?
-//     picked_up: Vec<String>,
+impl Graph {
+    pub fn new() -> Self {
+        Self {
+            graph: HashMap::new(),
+        }
+    }
 
-//     /// Next station
-//     end_node: String,
+    pub fn init_key(&mut self, stations: Stations) {
+        for (_, station) in stations.enumerate_stations() {
+            self.graph.insert(station.stat.clone(), Vec::new());
+        }
+    }
 
-//     // TODO: Redundant! We only need 1 field that store picked_up and dropped_off. Later, we will remove this.
-//     /// Does train drop any packages at end_node?
-//     dropped_off: Vec<String>,
+    pub fn init_value(&mut self, edges: Edges, stations: Stations) {
+        for (_, edge) in edges.enumerate_edges() {
+            let start = stations.get_station_name(edge.from()).unwrap();
+            let end = stations.get_station_name(edge.to()).unwrap();
 
-//     /// Are there any remaining packages in train's carriage?
-//     in_carriage: Vec<String>,
-// }
+            self.graph.get_mut(start).unwrap().push(end.clone());
+            self.graph.get_mut(end).unwrap().push(start.clone());
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct DistanceMap {
+    dm: HashMap<(String, String), u32>,
+}
+
+impl DistanceMap {
+    pub fn new() -> Self {
+        Self { dm: HashMap::new() }
+    }
+
+    pub fn init_key_value(&mut self, graph: Graph, edges: Edges, stations: Stations) {
+        for (start_station, neighbors) in graph.graph.iter() {
+            for end_station in neighbors {
+                let key = (start_station.clone(), end_station.clone());
+
+                let distance = edges
+                    .enumerate_edges()
+                    .find(|(_, edge)| {
+                        (stations
+                            .get_station_name(edge.from())
+                            .unwrap()
+                            .starts_with(start_station)
+                            && stations
+                                .get_station_name(edge.to())
+                                .unwrap()
+                                .starts_with(end_station))
+                            || (stations
+                                .get_station_name(edge.from())
+                                .unwrap()
+                                .starts_with(end_station)
+                                && stations
+                                    .get_station_name(edge.to())
+                                    .unwrap()
+                                    .starts_with(start_station))
+                    })
+                    .and_then(|(_, edge)| Some(edge.times()))
+                    .unwrap_or_else(|| 0);
+
+                self.dm.insert(key, distance);
+            }
+        }
+    }
+
+    pub fn sorted_entries(&self) -> Vec<((String, String), u32)> {
+        let mut entries: Vec<_> = self
+            .dm
+            .iter()
+            .map(|(&(ref a, ref b), &distance)| ((a.clone(), b.clone()), distance))
+            .collect();
+
+        entries.sort_by_key(|&((ref a, ref b), _)| (a.clone(), b.clone()));
+        entries
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TrainMove {
+    time: u32,
+    train: String,
+    from: u32,
+    to: u32,
+    /// Resembeling `Load` and `Drop`
+    packages: Vec<Package>,
+}
+
+impl TrainMove {
+    pub fn new() -> Self {
+        Self {
+            time: 0,
+            train: "".to_string(),
+            from: 0,
+            to: 0,
+            packages: Vec::new(),
+        }
+    }
+
+    pub fn with_time(&mut self, time: u32) {
+        self.time = time
+    }
+
+    pub fn with_train(&mut self, train_name: String) {
+        self.train = train_name
+    }
+
+    pub fn with_from(&mut self, from_index: u32) {
+        self.from = from_index
+    }
+
+    pub fn with_to(&mut self, to_index: u32) {
+        self.to = to_index
+    }
+
+    pub fn load_package(&mut self, package: Package) {
+        self.packages.push(package)
+    }
+
+    // pub fn drop_package(&mut self, station_idx: usize) {
+    //     for pkg in &self.packages {
+    //         if pkg.to() == station_idx as u32 {
+
+    //         }
+    //     }
+    // }
+}
 
 // impl TrainMove {
 //     pub fn add_time(&mut self, time: u32) {

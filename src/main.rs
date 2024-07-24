@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 fn main() {
     let mut stations = Stations::new();
@@ -55,18 +55,66 @@ fn main() {
 
     dbg!(&dist_map);
 
-    // Check if capacity is not enough.
-    // Then check if candidates_train and current_train iteration are close to current package iteration.
-    // If both trains (candidates and current) have the same distance to reach the current package, check which train has less time to reach the package iteration.
-    // Train with lesser time to reach the package and has the shortest distance to package will be store in HashMap
-    // The overall answer will be stored in Hashmap.
+    let mut package_map = find_train_candidates(&packages, &trains);
+
+    dbg!(&package_map);
 
     while !packages.empty() {
-        for (_, pkg) in packages.clone().enumerate_packages() {
+        for (_, mut pkg) in packages.clone().enumerate_packages() {
             if *pkg.status() == PackageStatus::AwaitingPickup {
-                let package_map = find_train_candidates(&packages, &trains);
+                if let Some(train) = package_map.get_train_mut(&pkg) {
+                    if pkg.from() == train.origin() {
+                        if train.already_load_package(pkg.clone()) {
+                            continue;
+                        }
+                        // load package
+                        pkg.set_status(PackageStatus::InTransit);
+                        train.load_package(pkg.clone());
+                    } else {
+                        // move to the package index
+                        // If:
+                        // - The train has enough capacity to carry the package.
+                        // - The package is at the pickup location.
+                        // - The package is currently at the same station as the train.
+                        // Then: loaded the package onto the train
 
-                dbg!(package_map);
+                        while train.current_index() != pkg.to() {
+                            let mut pkg_candidates: Vec<Package> = Vec::new();
+                            // TODO: Remove unused variable
+                            // let mut remaining_capacity: u32 = 0;
+
+                            // For each packages, we check if it abide by our rule and the weight doesnt exceed current train
+                            for (_, pkg_in_road) in packages.clone().enumerate_packages() {
+                                let loadable_in_carriage =
+                                    train.remain_capacity() >= pkg_in_road.weight();
+
+                                let is_awaiting_pickup =
+                                    *pkg_in_road.status() == PackageStatus::AwaitingPickup;
+
+                                // TODO: Check if the index is move or not for this whole operation
+                                let pkg_in_train_loc = pkg_in_road.from() == train.current_index();
+
+                                if loadable_in_carriage && is_awaiting_pickup && pkg_in_train_loc {
+                                    pkg_candidates.push(pkg_in_road.clone());
+                                    // remaining_capacity = train.remain_capacity() - pkg_in_road.weight();
+                                }
+                            }
+
+                            for mut pkg in pkg_candidates {
+                                if train.already_load_package(pkg.clone()) {
+                                    continue;
+                                }
+
+                                // TODO: Combine this 2 method?
+                                pkg.set_status(PackageStatus::InTransit);
+                                train.load_package(pkg);
+                            }
+
+                            // -----
+                            //
+                        }
+                    }
+                }
             }
 
             packages.pop(pkg);
@@ -74,6 +122,22 @@ fn main() {
     }
 }
 
+// pub fn find_package_candidates(package: &Package, train: &Train, pack) -> (Vec<Package>, u32) {
+//     let loadable_in_carriage = train.remain_capacity() >= package.weight();
+//     let is_awaiting_pickup = *package.status() == PackageStatus::AwaitingPickup;
+
+//     // TODO: Check if the index is move or not for this whole operation
+//     let pkg_in_train_loc = package.from() == train.current_index();
+
+//     if loadable_in_carriage && is_awaiting_pickup && pkg_in_train_loc {}
+// }
+
+// TODO: Write test
+// Check if capacity is not enough.
+// Then check if candidates_train and current_train iteration are close to current package iteration.
+// If both trains (candidates and current) have the same distance to reach the current package, check which train has less time to reach the package iteration.
+// Train with lesser time to reach the package and has the shortest distance to package will be store in HashMap
+// The overall answer will be stored in Hashmap.
 fn find_train_candidates(packages: &Packages, trains: &Trains) -> PackageTrainMapping {
     let mut package_train_map = PackageTrainMapping::new();
     let mut candidate_train: Option<Train> = None;
@@ -100,7 +164,7 @@ fn find_train_candidates(packages: &Packages, trains: &Trains) -> PackageTrainMa
         }
 
         if let Some(train) = candidate_train {
-            package_train_map.assign_package(pkg.name(), &train.name);
+            package_train_map.assign_package(pkg, train);
         }
 
         candidate_train = None;
@@ -118,9 +182,9 @@ fn get_diff(a: u32, b: u32) -> u32 {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct PackageTrainMapping {
-    mapping: HashMap<String, String>,
+    mapping: HashMap<Package, Train>,
 }
 
 impl PackageTrainMapping {
@@ -130,13 +194,16 @@ impl PackageTrainMapping {
         }
     }
 
-    fn assign_package(&mut self, package_name: &str, train_name: &str) {
-        self.mapping
-            .insert(package_name.to_string(), train_name.to_string());
+    fn assign_package(&mut self, package: Package, train: Train) {
+        self.mapping.insert(package, train);
     }
 
-    fn get_train_for_package(&self, package_name: &str) -> Option<&String> {
+    fn get_train_for_package(&self, package_name: &Package) -> Option<&Train> {
         self.mapping.get(package_name)
+    }
+
+    fn get_train_mut(&mut self, package: &Package) -> Option<&mut Train> {
+        self.mapping.get_mut(package)
     }
 }
 
@@ -254,7 +321,7 @@ impl Edges {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum PackageStatus {
     AwaitingPickup,
     InTransit,
@@ -262,7 +329,7 @@ pub enum PackageStatus {
     Dummy,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub struct Package {
     name: String,
     weight: u32,
@@ -383,9 +450,13 @@ pub struct Train {
     /// those package doesn't exceed this capacity
     capacity: u32,
 
+    /// Remaining capacity after load package to carriage
+    remain_capacity: u32,
+
     /// Origin index
     origin: u32,
 
+    // TODO: At some point, we need to update this current index. Where and When?
     /// Current index
     current: u32,
 
@@ -400,6 +471,7 @@ impl Train {
     pub fn new(
         name: String,
         capacity: u32,
+        remain_capacity: u32,
         origin: u32,
         current: u32,
         packages: Vec<Package>,
@@ -408,6 +480,7 @@ impl Train {
         Self {
             name,
             capacity,
+            remain_capacity,
             origin,
             current,
             packages,
@@ -421,6 +494,10 @@ impl Train {
 
     pub fn capacity(&self) -> u32 {
         self.capacity
+    }
+
+    pub fn remain_capacity(&self) -> u32 {
+        self.remain_capacity
     }
 
     pub fn push_packages(&mut self, package: Package) {
@@ -440,6 +517,25 @@ impl Train {
 
     pub fn accumulate_time(&mut self, time_taken: u32) {
         self.time += time_taken
+    }
+
+    pub fn already_load_package(&self, package: Package) -> bool {
+        for pkg in self.packages.clone() {
+            // We compare name instead of the whole Package struct to avoid ambiguity
+            if pkg.name() == package.name() {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Load package to carriage while take into account `package weight` and train `remaining capcity`
+    pub fn load_package(&mut self, pkg: Package) {
+        let pkg_weight = pkg.weight();
+        let rem_cap = self.remain_capacity - pkg_weight;
+
+        self.packages.push(pkg);
+        self.remain_capacity = rem_cap;
     }
 }
 
@@ -464,7 +560,16 @@ impl Trains {
     ) {
         let mut pkgs = Vec::new();
         pkgs.push(package);
-        let train = Train::new(name, capacity, origin, current, pkgs, time);
+
+        let mut pkg_weight: u32 = 0;
+
+        for pkg in pkgs.clone() {
+            pkg_weight += pkg.weight();
+        }
+
+        let remain_capacity = capacity - pkg_weight;
+
+        let train = Train::new(name, capacity, remain_capacity, origin, current, pkgs, time);
         self.trains.push(train);
     }
 

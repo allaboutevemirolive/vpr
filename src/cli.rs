@@ -4,6 +4,9 @@ use clap::Command;
 
 pub mod options {
     //
+    pub mod miscellaneous {
+        pub static VERSION: &str = "version";
+    }
 }
 
 pub fn vrp_app() -> Command {

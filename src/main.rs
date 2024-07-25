@@ -1,10 +1,45 @@
+mod cli;
+mod test;
+
 use std::collections::HashMap;
-use std::fmt;
+
+use tracing::info;
+
+macro_rules! tracer {
+    () => {
+        if std::env::var("ENABLE_VRP_TRACING").is_ok() {
+            println!();
+        }
+    };
+    ($x:expr) => {
+        if std::env::var("ENABLE_VRP_TRACING").is_ok() {
+            dbg!($x);
+        }
+    };
+    ($($arg:tt)*) => {
+        if std::env::var("ENABLE_VRP_TRACING").is_ok() {
+            println!($($arg)*);
+        }
+    };
+}
+
+macro_rules! trace_output {
+    () => {
+        if std::env::var("ENABLE_OUTPUT_TRACING").is_ok() {
+            println!();
+        }
+    };
+    ($x:expr) => {
+        if std::env::var("ENABLE_OUTPUT_TRACING").is_ok() {
+            dbg!($x);
+        }
+    };
+}
 
 fn main() {
     if std::env::var("ENABLE_TRACING").is_ok() {
         tracing_subscriber::fmt::init();
-        tracing::info!("Hello from Trees-rs");
+        info!("Hello from VRP");
     }
 
     let mut stations = Stations::new();
@@ -56,17 +91,20 @@ fn main() {
     graph.init_key(stations.clone());
     graph.init_value(edges.clone(), stations.clone());
 
-    dbg!(&graph);
+    // dbg!(&graph);
+    tracer!(&graph);
 
     let mut dist_map = DistanceMap::new();
     dist_map.init_key_value(graph.clone(), edges, stations.clone());
     dist_map.sorted_entries();
 
-    dbg!(&dist_map);
+    // dbg!(&dist_map);
+    tracer!(&dist_map);
 
     let mut package_map = find_train_candidates(&packages, &trains);
 
-    dbg!(&package_map);
+    // dbg!(&package_map);
+    tracer!(&package_map);
 
     let mut train_movement = TrainMovement::new();
 
@@ -76,7 +114,7 @@ fn main() {
 
     let mut pkg_cands = PackageCandidates::new();
 
-    let mut num_track = 0;
+    // let mut num_track = 0;
 
     let mut where_to_go = "".to_string();
     let mut next_station = "".to_string();
@@ -92,16 +130,18 @@ fn main() {
 
             // Check if the package pickup is where train already is
 
-            dbg!(&pkg.from());
-            dbg!(&trains.find_by_idx(pkg.from()));
+            tracer!(&pkg.from());
+            tracer!(&trains.find_by_idx(pkg.from()));
 
             // For each package check if train same location a package
             if trains.find_by_idx(pkg.from()) {
-                println!(
-                    "package {:?} is at the same location train {}",
-                    pkg,
-                    stations.get_station_name(pkg.from()).unwrap()
-                );
+                // println!(
+                //     "package {:?} is at the same location train {}",
+                //     pkg,
+                //     stations.get_station_name(pkg.from()).unwrap()
+                // );
+
+                tracer!("package same location as train");
 
                 if train.already_load_package(pkg.clone()) {
                     continue;
@@ -110,363 +150,254 @@ fn main() {
                 train.load_package(pkg.clone());
                 pkg_collection.update_status(&pkg.name(), PackageStatus::InTransit);
             } else {
-                // Move the train
-                next_station = get_next(
-                    &train,
-                    &pkg,
-                    &stations,
-                    &graph,
+                move_train(
+                    &mut pkg,
+                    &mut pkg_collection,
+                    &mut packages,
+                    train,
+                    &mut trains,
                     where_to_go.clone(),
-                    &pkg_collection,
+                    &mut graph,
+                    &mut stations,
+                    next_station.clone(),
+                    &mut pkg_cands,
+                    &mut logger,
+                    &mut train_movement,
+                    &mut dist_map,
                 );
-                dbg!(&next_station);
-
-                let train_index = stations
-                    .get_station_idx(
-                        stations
-                            .get_station_name(train.current_index())
-                            .unwrap()
-                            .to_string(),
-                    )
-                    .unwrap();
-
-                dbg!(&train_index);
-                dbg!(&train.current_index());
-                dbg!(&pkg.from());
-                dbg!(&pkg.to());
-
-                // let remaining_space: u32 = train.remain_capacity() - pkg.weight();
-
-                // dbg!(&remaining_space);
-
-                // We handle the case if
-                // - train index != with pkg origin
-                // - if train index != pkg destionation
-                while train.current_index() != pkg.from() || train.current_index() != pkg.to() {
-                    for (_, pkg_) in packages.clone().enumerate_packages() {
-                        dbg!(&pkg_);
-                        let loadable = train.remain_capacity() >= pkg_.weight();
-                        dbg!(&loadable);
-
-                        let pkg_status = pkg_collection.get_status(pkg_.name()).unwrap();
-                        dbg!(&pkg_status);
-                        let waiting = *pkg_status == PackageStatus::AwaitingPickup;
-
-                        let same_location = pkg.from() == train.current_index();
-                        dbg!(&same_location);
-
-                        if loadable && waiting && same_location {
-                            pkg_cands.push(&pkg_);
-                        }
-                    }
-
-                    dbg!("{} with {}", &pkg_cands.len(), &pkg_cands);
-                    if !pkg_cands.is_empty() {
-                        for (_, candidate) in pkg_cands.enumerate_cands() {
-                            if !train.already_load_package(candidate.clone()) {
-                                // candidate.clone().set_status(PackageStatus::InTransit);
-                                train.load_package(candidate.clone());
-                                pkg_collection
-                                    .update_status(&candidate.name(), PackageStatus::InTransit);
-                                // pkg.set_status(PackageStatus::InTransit);
-                                dbg!(&pkg_collection);
-                            }
-                        }
-                    }
-
-                    let mut pick_packages: Vec<Package> = Vec::new();
-
-                    for pick_pkg in train.packages.clone() {
-                        if pick_pkg.from() == train_index && !logger.already_add(&pick_pkg) {
-                            pick_packages.push(pick_pkg);
-                        }
-                    }
-                    dbg!(&pick_packages);
-                    train_movement.with_picked_pkgs(pick_packages.clone());
-                    dbg!(&train_movement);
-
-                    for pick_p in pick_packages {
-                        logger.push(&pick_p);
-                    }
-                    dbg!(&logger);
-
-                    let mut drop_packages: Vec<Package> = Vec::new();
-
-                    dbg!(&next_station);
-                    dbg!(&stations.get_station_idx(next_station.clone()).unwrap());
-
-                    let next_station_idx = &stations.get_station_idx(next_station.clone()).unwrap();
-
-                    for loader in train.packages.clone() {
-                        if loader.to() == *next_station_idx
-                            && *loader.status() != PackageStatus::Dummy
-                        {
-                            drop_packages.push(loader);
-                        }
-                    }
-
-                    dbg!(&drop_packages);
-
-                    train_movement.with_drop_pkgs(drop_packages.clone());
-
-                    dbg!(&train_movement);
-                    dbg!(&train);
-
-                    for drop_pkg in drop_packages {
-                        if train.already_load_package(drop_pkg.clone()) {
-                            continue;
-                        }
-
-                        // Remove from carriage
-                        train.remove_package(drop_pkg.clone());
-                        // Remove from packages
-                        packages.pop(drop_pkg.clone());
-                        // Remove from tracker
-                        pkg_collection.update_status(&drop_pkg.name(), PackageStatus::Delivered);
-                        dbg!(&pkg_collection);
-                    }
-
-                    train_movement.with_time(train.time());
-                    train_movement.with_train(train.name().to_string());
-                    train_movement.with_from(train_index);
-                    train_movement.with_to(*next_station_idx);
-                    for pkg_train in train.packages.clone() {
-                        if *pkg_train.status() != PackageStatus::Dummy {
-                            train_movement.with_carriages(train.packages.clone());
-                        }
-                    }
-
-                    dbg!(&train_movement);
-                    dbg!(&train);
-
-                    dbg!(&stations
-                        .get_station_name(train.current_index())
-                        .unwrap()
-                        .to_string());
-                    dbg!(stations
-                        .get_station_name(*next_station_idx)
-                        .unwrap()
-                        .to_string());
-
-                    let dist = dist_map.get_distance(
-                        stations.get_station_name(train_index).unwrap().to_string(),
-                        stations
-                            .get_station_name(*next_station_idx)
-                            .unwrap()
-                            .to_string(),
-                    );
-                    dbg!(&dist);
-
-                    // let grp = graph
-
-                    let numerize = dist.parse::<u32>().unwrap();
-                    dbg!(&numerize);
-
-                    dbg!(&train);
-                    train.accumulate_time(numerize);
-                    train.update_current_idx(*next_station_idx);
-                    dbg!(&train);
-
-                    // We arrived
-
-                    next_station = get_next(
-                        &train,
-                        &pkg,
-                        &stations,
-                        &graph,
-                        where_to_go.clone(),
-                        &pkg_collection,
-                    );
-                    dbg!(&next_station);
-                    break; // TODO
-                }
             }
         }
-        // dbg!("Hello World");
+
         if *pkg_collection.get_status(&pkg.name()).unwrap() == PackageStatus::InTransit {
-            dbg!(&pkg_collection.get_status(&pkg.name()).unwrap());
-
-            // ===================
-
-            // Move the train
-            next_station = get_next(
-                &train,
-                &pkg,
-                &stations,
-                &graph,
+            move_train(
+                &mut pkg,
+                &mut pkg_collection,
+                &mut packages,
+                train,
+                &mut trains,
                 where_to_go.clone(),
-                &pkg_collection,
+                &mut graph,
+                &mut stations,
+                next_station.clone(),
+                &mut pkg_cands,
+                &mut logger,
+                &mut train_movement,
+                &mut dist_map,
             );
-            dbg!(&next_station);
-
-            let train_index = stations
-                .get_station_idx(
-                    stations
-                        .get_station_name(train.current_index())
-                        .unwrap()
-                        .to_string(),
-                )
-                .unwrap();
-
-            dbg!(&train_index);
-            dbg!(&train.current_index());
-            dbg!(&pkg.from());
-            dbg!(&pkg.to());
-
-            let remaining_space: u32 = train.remain_capacity();
-
-            dbg!(&remaining_space);
-
-            // We handle the case if
-            // - train index != with pkg origin
-            // - if train index != pkg destionation
-            // while train.current_index() != pkg.from() || train.current_index() != pkg.to() {
-            while !(*pkg_collection.get_status(&pkg.name()).unwrap() == PackageStatus::Delivered) {
-                for (_, pkg_) in packages.clone().enumerate_packages() {
-                    dbg!(&pkg_);
-                    let loadable = train.remain_capacity() >= pkg_.weight();
-                    dbg!(&loadable);
-
-                    let pkg_status = pkg_collection.get_status(pkg_.name()).unwrap();
-                    dbg!(&pkg_status);
-                    let waiting = *pkg_status == PackageStatus::AwaitingPickup;
-
-                    let same_location = pkg.from() == train.current_index();
-                    dbg!(&same_location);
-
-                    if loadable && waiting && same_location {
-                        pkg_cands.push(&pkg_);
-                    }
-                }
-
-                dbg!("{} with {}", &pkg_cands.len(), &pkg_cands);
-                if !pkg_cands.is_empty() {
-                    for (_, candidate) in pkg_cands.enumerate_cands() {
-                        if !train.already_load_package(candidate.clone()) {
-                            // candidate.clone().set_status(PackageStatus::InTransit);
-                            train.load_package(candidate.clone());
-                            pkg_collection
-                                .update_status(&candidate.name(), PackageStatus::InTransit);
-                            // pkg.set_status(PackageStatus::InTransit);
-                            dbg!(&pkg_collection);
-                        }
-                    }
-                }
-
-                let mut pick_packages: Vec<Package> = Vec::new();
-
-                for pick_pkg in train.packages.clone() {
-                    if pick_pkg.from() == train_index && !logger.already_add(&pick_pkg) {
-                        pick_packages.push(pick_pkg);
-                    }
-                }
-                dbg!(&pick_packages);
-                train_movement.with_picked_pkgs(pick_packages.clone());
-                dbg!(&train_movement);
-
-                for pick_p in pick_packages {
-                    logger.push(&pick_p);
-                }
-                dbg!(&logger);
-
-                let mut drop_packages: Vec<Package> = Vec::new();
-
-                dbg!(&next_station);
-                dbg!(&stations.get_station_idx(next_station.clone()).unwrap());
-
-                let next_station_idx = &stations.get_station_idx(next_station.clone()).unwrap();
-
-                for loader in train.packages.clone() {
-                    if loader.to() == *next_station_idx && *loader.status() != PackageStatus::Dummy
-                    {
-                        drop_packages.push(loader);
-                    }
-                }
-
-                dbg!(&drop_packages);
-
-                train_movement.with_drop_pkgs(drop_packages.clone());
-
-                dbg!(&train_movement);
-                dbg!(&train);
-
-                for drop_pkg in drop_packages {
-                    // if train.already_load_package(drop_pkg.clone()) {
-                    //     continue;
-                    // }
-
-                    // Remove from carriage
-                    train.remove_package(drop_pkg.clone());
-                    // Remove from packages
-                    packages.pop(drop_pkg.clone());
-                    // Remove from tracker
-                    pkg_collection.update_status(&drop_pkg.name(), PackageStatus::Delivered);
-                    dbg!(&pkg_collection);
-                    dbg!(&packages);
-                }
-
-                train_movement.with_time(train.time());
-                train_movement.with_train(train.name().to_string());
-                train_movement.with_from(train_index);
-                train_movement.with_to(*next_station_idx);
-                for pkg_train in train.packages.clone() {
-                    if *pkg_train.status() != PackageStatus::Dummy {
-                        train_movement.with_carriages(train.packages.clone());
-                    }
-                }
-
-                dbg!(&train_movement);
-                dbg!(&train);
-
-                dbg!(&stations
-                    .get_station_name(train.current_index())
-                    .unwrap()
-                    .to_string());
-                dbg!(stations
-                    .get_station_name(*next_station_idx)
-                    .unwrap()
-                    .to_string());
-
-                let dist = dist_map.get_distance(
-                    stations.get_station_name(train_index).unwrap().to_string(),
-                    stations
-                        .get_station_name(*next_station_idx)
-                        .unwrap()
-                        .to_string(),
-                );
-                dbg!(&dist);
-
-                // let grp = graph
-
-                let numerize = dist.parse::<u32>().unwrap();
-                dbg!(&numerize);
-
-                dbg!(&train);
-                train.accumulate_time(numerize);
-                train.update_current_idx(*next_station_idx);
-                dbg!(&train);
-
-                // We arrived
-
-                next_station = get_next(
-                    &train,
-                    &pkg,
-                    &stations,
-                    &graph,
-                    where_to_go.clone(),
-                    &pkg_collection,
-                );
-                dbg!(&next_station);
-                // break; // TODO
-            }
         }
-
-        // break;
-        // num_track += 1;
     }
 }
 
-fn get_next<'a>(
+pub fn move_train(
+    pkg: &mut Package,
+    pkg_collection: &mut PackageCollection,
+    packages: &mut Packages,
+    train: &mut Train,
+    trains: &mut Trains,
+    mut where_to_go: String,
+    graph: &mut Graph,
+    stations: &mut Stations,
+    mut next_station: String,
+    pkg_cands: &mut PackageCandidates,
+    logger: &mut Logger,
+    train_movement: &mut TrainMovement,
+    dist_map: &mut DistanceMap,
+) {
+    tracer!(&pkg_collection.get_status(&pkg.name()).unwrap());
+
+    // Move the train
+    next_station = get_next(
+        &train,
+        &pkg,
+        &stations,
+        &graph,
+        where_to_go.clone(),
+        &pkg_collection,
+    );
+    tracer!(&next_station);
+
+    let train_index = stations
+        .get_station_idx(
+            stations
+                .get_station_name(train.current_index())
+                .unwrap()
+                .to_string(),
+        )
+        .unwrap();
+
+    tracer!(&train_index);
+    tracer!(&train.current_index());
+    tracer!(&pkg.from());
+    tracer!(&pkg.to());
+
+    let remaining_space: u32 = train.remain_capacity();
+
+    tracer!(&remaining_space);
+
+    // We handle the case if
+    // - train index != with pkg origin
+    // - if train index != pkg destionation
+    // while train.current_index() != pkg.from() || train.current_index() != pkg.to() {
+    while !(*pkg_collection.get_status(&pkg.name()).unwrap() == PackageStatus::Delivered) {
+        for (_, pkg_) in packages.clone().enumerate_packages() {
+            tracer!(&pkg_);
+
+            let loadable = train.remain_capacity() >= pkg_.weight();
+
+            tracer!(&loadable);
+
+            let pkg_status = pkg_collection.get_status(pkg_.name()).unwrap();
+
+            tracer!(&pkg_status);
+
+            let waiting = *pkg_status == PackageStatus::AwaitingPickup;
+
+            let same_location = pkg.from() == train.current_index();
+
+            tracer!(&same_location);
+
+            if loadable && waiting && same_location {
+                pkg_cands.push(&pkg_);
+            }
+        }
+
+        tracer!("{:?} with {:?}", &pkg_cands.len(), &pkg_cands);
+
+        if !pkg_cands.is_empty() {
+            for (_, candidate) in pkg_cands.enumerate_cands() {
+                if !train.already_load_package(candidate.clone()) {
+                    // candidate.clone().set_status(PackageStatus::InTransit);
+                    train.load_package(candidate.clone());
+                    pkg_collection.update_status(&candidate.name(), PackageStatus::InTransit);
+                    // pkg.set_status(PackageStatus::InTransit);
+                    tracer!(&pkg_collection);
+                }
+            }
+        }
+
+        let mut pick_packages: Vec<Package> = Vec::new();
+
+        for pick_pkg in train.packages.clone() {
+            if pick_pkg.from() == train_index && !logger.already_add(&pick_pkg) {
+                pick_packages.push(pick_pkg);
+            }
+        }
+        tracer!(&pick_packages);
+
+        train_movement.with_picked_pkgs(pick_packages.clone());
+
+        tracer!(&train_movement);
+
+        for pick_p in pick_packages {
+            logger.push(&pick_p);
+        }
+
+        tracer!(&logger);
+
+        let mut drop_packages: Vec<Package> = Vec::new();
+
+        tracer!(&next_station);
+        tracer!(&stations.get_station_idx(next_station.clone()).unwrap());
+
+        let next_station_idx = &stations.get_station_idx(next_station.clone()).unwrap();
+
+        for loader in train.packages.clone() {
+            if loader.to() == *next_station_idx && *loader.status() != PackageStatus::Dummy {
+                drop_packages.push(loader);
+            }
+        }
+
+        tracer!(&drop_packages);
+
+        train_movement.with_drop_pkgs(drop_packages.clone());
+
+        tracer!(&train_movement);
+        tracer!(&train);
+
+        for drop_pkg in drop_packages {
+            // if train.already_load_package(drop_pkg.clone()) {
+            //     continue;
+            // }
+
+            // Remove from carriage
+            train.remove_package(drop_pkg.clone());
+            // Remove from packages
+            packages.pop(drop_pkg.clone());
+            // Remove from tracker
+            pkg_collection.update_status(&drop_pkg.name(), PackageStatus::Delivered);
+
+            tracer!(&pkg_collection);
+            tracer!(&packages);
+        }
+
+        tracer!(&train_movement);
+
+        train_movement.with_time(train.time());
+        train_movement.with_train(train.name().to_string());
+        train_movement.with_from(train_index);
+        train_movement.with_to(*next_station_idx);
+
+        tracer!(&train_movement);
+
+        for pkg_train in train.packages.clone() {
+            if *pkg_train.status() != PackageStatus::Dummy {
+                train_movement.with_carriages(train.packages.clone());
+            }
+        }
+
+        tracer!(&train_movement);
+        tracer!(&train);
+        tracer!(&stations
+            .get_station_name(train.current_index())
+            .unwrap()
+            .to_string());
+        tracer!(stations
+            .get_station_name(*next_station_idx)
+            .unwrap()
+            .to_string());
+
+        let dist = dist_map.get_distance(
+            stations.get_station_name(train_index).unwrap().to_string(),
+            stations
+                .get_station_name(*next_station_idx)
+                .unwrap()
+                .to_string(),
+        );
+
+        tracer!(&dist);
+
+        let numerize = dist.parse::<u32>().unwrap();
+
+        tracer!(&numerize);
+        tracer!(&train);
+
+        train.accumulate_time(numerize);
+        train.update_current_idx(*next_station_idx);
+
+        tracer!(&train);
+        tracer!(&train_movement);
+
+        trace_output!(&train_movement);
+
+        // We arrived
+        next_station = get_next(
+            &train,
+            &pkg,
+            &stations,
+            &graph,
+            where_to_go.clone(),
+            &pkg_collection,
+        );
+
+        tracer!(&next_station);
+
+        // break; // TODO
+    }
+}
+
+pub fn searching() {}
+
+pub fn get_next<'a>(
     train: &Train,
     pkg: &Package,
     stations: &Stations,
@@ -497,10 +428,10 @@ fn get_next<'a>(
 
     let pkg_pos_idx = stations.get_station_idx(pkg_pos_name.to_string()).unwrap();
 
-    dbg!(&train_pos_name);
-    dbg!(&train_pos_idx);
-    dbg!(&pkg_pos_name);
-    dbg!(&pkg_pos_idx);
+    tracer!(&train_pos_name);
+    tracer!(&train_pos_idx);
+    tracer!(&pkg_pos_name);
+    tracer!(&pkg_pos_idx);
 
     if *pkg_status == PackageStatus::AwaitingPickup {
         if next_station_idx == pkg.from() || alt_station.is_empty() {

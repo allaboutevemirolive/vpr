@@ -2,6 +2,11 @@ use std::collections::HashMap;
 use std::fmt;
 
 fn main() {
+    if std::env::var("ENABLE_TRACING").is_ok() {
+        tracing_subscriber::fmt::init();
+        tracing::info!("Hello from Trees-rs");
+    }
+
     let mut stations = Stations::new();
     stations.push(Station::new("A".to_string()));
     stations.push(Station::new("B".to_string()));

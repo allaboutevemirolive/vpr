@@ -65,17 +65,27 @@ fn main() {
 
     let mut train_movement = TrainMovement::new();
 
-    let mut tracker = Tracker::new();
+    // let mut tracker = Tracker::new();
 
     let mut logger = Logger::new();
 
-    for (_, pkg) in packages.clone().enumerate_packages() {
-        if *pkg.status() == PackageStatus::AwaitingPickup {
+    let mut pkg_cands = PackageCandidates::new();
+
+    // for (_, pkg) in packages.clone().enumerate_packages() {
+    while !packages.is_empty() {
+        let pkg = packages.first().cloned().unwrap();
+
+        if *pkg_collection.get_status(&pkg.name()).unwrap() == PackageStatus::AwaitingPickup {
             let train = package_map.get_train_mut(&pkg).unwrap();
 
             let mut where_to_go = "".to_string();
             let mut next_station = "".to_string();
             // Check if the package pickup is where train already is
+
+            dbg!(&pkg.from());
+            dbg!(&trains.find_by_idx(pkg.from()));
+
+            // For each package check if train same location a package
             if trains.find_by_idx(pkg.from()) {
                 println!(
                     "package {:?} is at the same location train {}",
@@ -90,7 +100,8 @@ fn main() {
                 train.load_package(pkg.clone());
                 pkg_collection.update_status(&pkg.name(), PackageStatus::InTransit);
             } else {
-                next_station = get_next(&train, &pkg, &stations, &graph, where_to_go);
+                // Move the train
+                next_station = get_next(&train, &pkg, &stations, &graph, where_to_go.clone());
                 dbg!(&next_station);
 
                 let train_index = stations
@@ -103,11 +114,18 @@ fn main() {
                     .unwrap();
 
                 dbg!(&train_index);
+                dbg!(&train.current_index());
+                dbg!(&pkg.from());
+                dbg!(&pkg.to());
 
-                let mut pkg_canditates: Vec<Package> = Vec::new();
-                let _remaining_space: u32 = train.remain_capacity() - pkg.weight();
+                let remaining_space: u32 = train.remain_capacity() - pkg.weight();
 
-                while train_index != pkg.from() {
+                dbg!(&remaining_space);
+
+                // We handle the case if
+                // - train index != with pkg origin
+                // - if train index != pkg destionation
+                while train.current_index() != pkg.from() {
                     for (_, pkg_) in packages.clone().enumerate_packages() {
                         dbg!(&pkg_);
                         let loadable = train.remain_capacity() >= pkg_.weight();
@@ -116,17 +134,17 @@ fn main() {
                         dbg!(&pkg_status);
                         let waiting = *pkg_status == PackageStatus::AwaitingPickup;
 
-                        let same_location = pkg.from() == train_index;
+                        let same_location = pkg.from() == train.current_index();
                         dbg!(&same_location);
 
                         if loadable && waiting && same_location {
-                            pkg_canditates.push(pkg_.clone());
+                            pkg_cands.push(&pkg_);
                         }
                     }
 
-                    dbg!("{} with {}", &pkg_canditates.len(), &pkg_canditates);
-                    if !pkg_canditates.is_empty() {
-                        for candidate in pkg_canditates {
+                    dbg!("{} with {}", &pkg_cands.len(), &pkg_cands);
+                    if !pkg_cands.is_empty() {
+                        for (_, candidate) in pkg_cands.enumerate_cands() {
                             if !train.already_load_package(candidate.clone()) {
                                 train.load_package(candidate.clone());
                                 pkg_collection
@@ -143,11 +161,14 @@ fn main() {
                             pick_packages.push(pick_pkg);
                         }
                     }
+                    dbg!(&pick_packages);
                     train_movement.with_picked_pkgs(pick_packages.clone());
+                    dbg!(&train_movement);
 
                     for pick_p in pick_packages {
                         logger.push(&pick_p);
                     }
+                    dbg!(&logger);
 
                     let mut drop_packages: Vec<Package> = Vec::new();
 
@@ -157,12 +178,18 @@ fn main() {
                     let next_station_idx = &stations.get_station_idx(next_station.clone()).unwrap();
 
                     for loader in train.packages.clone() {
-                        if loader.to() == *next_station_idx {
+                        if loader.to() == *next_station_idx
+                            && *loader.status() != PackageStatus::Dummy
+                        {
                             drop_packages.push(loader);
                         }
                     }
 
+                    dbg!(&drop_packages);
+
                     train_movement.with_drop_pkgs(drop_packages.clone());
+
+                    dbg!(&train_movement);
 
                     for drop_pkg in drop_packages {
                         if train.already_load_package(drop_pkg.clone()) {
@@ -175,15 +202,25 @@ fn main() {
                         packages.pop(drop_pkg.clone());
                         // Remove from tracker
                         pkg_collection.update_status(&drop_pkg.name(), PackageStatus::Delivered);
+                        dbg!(&pkg_collection);
                     }
 
                     train_movement.with_time(train.time());
                     train_movement.with_train(train.name().to_string());
                     train_movement.with_from(train_index);
                     train_movement.with_to(*next_station_idx);
-                    train_movement.with_carriages(train.packages.clone());
+                    for pkg_train in train.packages.clone() {
+                        if *pkg_train.status() != PackageStatus::Dummy {
+                            train_movement.with_carriages(train.packages.clone());
+                        }
+                    }
 
-                    dbg!(&stations.get_station_name(train_index).unwrap().to_string());
+                    dbg!(&train_movement);
+
+                    dbg!(&stations
+                        .get_station_name(train.current_index())
+                        .unwrap()
+                        .to_string());
                     dbg!(stations
                         .get_station_name(*next_station_idx)
                         .unwrap()
@@ -198,6 +235,8 @@ fn main() {
                     );
                     dbg!(&dist);
 
+                    // let grp = graph
+
                     let numerize = dist.parse::<u32>().unwrap();
                     dbg!(&numerize);
 
@@ -206,14 +245,18 @@ fn main() {
                     train.update_current_idx(*next_station_idx);
                     dbg!(&train);
 
+                    next_station = get_next(&train, &pkg, &stations, &graph, where_to_go.clone());
+                    dbg!(&next_station);
                     break; // TODO
                 }
             }
         }
-
-        if *pkg.status() == PackageStatus::InTransit {
-            //
+        dbg!("Hello World");
+        if *pkg_collection.get_status(&pkg.name()).unwrap() == PackageStatus::InTransit {
+            dbg!("Hello World");
         }
+
+        break;
     }
 }
 
@@ -673,6 +716,10 @@ impl Packages {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.packages.len()
+    }
+
     pub fn push(&mut self, package: Package) {
         self.packages.push(package)
     }
@@ -693,8 +740,12 @@ impl Packages {
         }
     }
 
-    pub fn empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.packages.is_empty()
+    }
+
+    pub fn first(&self) -> Option<&Package> {
+        self.packages.first()
     }
 
     pub fn push_with(
@@ -1093,6 +1144,7 @@ impl TrainMovement {
     // }
 }
 
+#[derive(Debug)]
 pub struct Logger {
     log: Vec<Package>,
 }
@@ -1113,6 +1165,33 @@ impl Logger {
 
     pub fn push(&mut self, pkg: &Package) {
         self.log.push(pkg.clone())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PackageCandidates {
+    cand: Vec<Package>,
+}
+
+impl PackageCandidates {
+    pub fn new() -> Self {
+        Self { cand: Vec::new() }
+    }
+
+    pub fn push(&mut self, pkg: &Package) {
+        self.cand.push(pkg.clone())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.cand.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.cand.len()
+    }
+
+    pub fn enumerate_cands(&self) -> impl Iterator<Item = (usize, &Package)> {
+        self.cand.iter().enumerate()
     }
 }
 

@@ -4,7 +4,8 @@ use crate::buffer::Buffer;
 mod cli;
 mod test;
 
-use std::{any::Any, collections::HashMap, fmt};
+use std::collections::HashMap;
+use std::fmt;
 
 use tracing::info;
 
@@ -76,6 +77,27 @@ fn main() {
     }
 }
 
+fn find_nearest_trains(package_index: usize, train_indices: &[usize]) -> Vec<usize> {
+    let mut distances: Vec<(usize, usize)> = train_indices
+        .iter()
+        .map(|&train_index| {
+            (
+                train_index,
+                (train_index as isize - package_index as isize).abs() as usize,
+            )
+        })
+        .collect();
+
+    distances.sort_unstable_by_key(|&(_, distance)| distance);
+
+    let min_distance = distances[0].1;
+    distances
+        .into_iter()
+        .take_while(|&(_, distance)| distance == min_distance)
+        .map(|(train_index, _)| train_index)
+        .collect()
+}
+
 pub struct TrainsTracker {
     trains: Vec<(Train, u32)>,
 }
@@ -125,6 +147,15 @@ impl Timeline {
             self.times.insert(train.to_string(), new_time);
         }
     }
+
+    pub fn trains_with_less_time(&self, train: &str) -> Vec<String> {
+        let train_time = self.get_time(train);
+        self.times
+            .iter()
+            .filter(|&(_, &time)| time < train_time)
+            .map(|(train, _)| train.clone())
+            .collect()
+    }
 }
 
 pub fn start_searching(
@@ -143,25 +174,64 @@ pub fn start_searching(
     mut dist_map: DistanceMap,
     timeline: &mut Timeline,
 ) {
+    // traced!(&packages);
+
     while num != 6 {
-        // while !packages.is_empty() {
+        traced!(&packages);
+        // while !(packages.len() == 0) {
+        // find_train_candidates(&packages, &trains, timeline, &mut package_map);
+
         let pkg = packages.first().cloned();
+
+        if pkg.is_none() {
+            break;
+        }
 
         // traced!(&packages);
         // traced!(&pkg);
 
         let mut pkg = match pkg {
-            Some(package) => {
-                // let p_package = package.clone();
-                // packages.pop(p_package);
-                package
-            }
+            Some(package) => package,
             None => break,
         };
 
         let mut train = package_map.get_train_mut(&pkg).unwrap();
 
+        // package_map.remove_package(&pkg);
+
+        // traced!(&train.name());
+
+        // let train_vec = timeline.trains_with_less_time(&train.name());
+
+        // traced!(&train_vec);
+        // traced!(&timeline);
+
+        // let mut train_indices: Vec<usize> = Vec::new();
+
+        // for (_, train_) in trains.enumerate_trains() {
+        //     for tr_v in train_vec.clone() {
+        //         if *train_.name() == tr_v {
+        //             train_indices.push(train_.current_index() as usize);
+
+        //             // train.update_name(train_.name().to_string());
+        //         }
+        //     }
+        // }
+
+        // traced!(&train_indices);
+
+        // let mut near: Vec<usize> = Vec::new();
+
+        // if train_indices.len() >= 1 {
+        //     near = find_nearest_trains(pkg.from().try_into().unwrap(), &train_indices);
+        // }
+
+        // traced!(&near);
         // traced!(&train);
+
+        // let train_ = trains.find_train_by_index(*near.first().unwrap()).unwrap();
+
+        // traced!(&train_);
 
         if *pkg_collection.get_status(&pkg.name()).unwrap() == PackageStatus::AwaitingPickup {
             // Pick the closest train
@@ -207,7 +277,7 @@ pub fn start_searching(
         }
 
         if *pkg_collection.get_status(&pkg.name()).unwrap() == PackageStatus::InTransit {
-            // let mut train_cand = package_map.get_train_for_package(&pkg).unwrap().clone();
+            // let mut train = package_map.get_train_for_package(&pkg).unwrap().clone();
 
             // let mut found = false;
 
@@ -241,6 +311,10 @@ pub fn start_searching(
             // }
         }
         num += 1;
+
+        if packages.is_empty() {
+            break;
+        }
     }
 }
 
@@ -440,6 +514,49 @@ pub fn move_train(
 
             tracer!(&pkg_collection);
             tracer!(&packages);
+
+            // Update PackageTrainMapping
+
+            // let train_vec = timeline.trains_with_less_time(&train.name());
+
+            // traced!(&train_vec);
+            // traced!(&timeline);
+
+            // let mut train_indices: Vec<usize> = Vec::new();
+
+            // for (_, train_) in trains.enumerate_trains() {
+            //     for tr_v in train_vec.clone() {
+            //         if *train_.name() == tr_v {
+            //             train_indices.push(train_.current_index() as usize);
+
+            //             // train.update_name(train_.name().to_string());
+            //         }
+            //     }
+            // }
+
+            // traced!(&train_indices);
+
+            // let mut near: Vec<usize> = Vec::new();
+
+            // if train_indices.len() >= 1 {
+            //     near = find_nearest_trains(pkg.from().try_into().unwrap(), &train_indices);
+            // }
+
+            // traced!(&near);
+            // traced!(&train);
+
+            // if let Some(idx) = near.first() {
+            //     if let Some(tr_idx) = trains.find_train_by_index(*idx) {
+            //     } else {
+            //         break;
+            //     }
+            // } else {
+            //     break;
+            // }
+
+            // let train_ = trains.find_train_by_index(*near.first().unwrap()).unwrap();
+
+            // traced!(&train_);
         }
 
         tracer!(&train_movement);
@@ -515,6 +632,42 @@ pub fn move_train(
         // Immediately clear picked packages in our tracker
         train_movement.picked_pkgs.clear();
         train_movement.drop_pkgs.clear();
+
+        if *pkg_collection.get_status(&pkg.name()).unwrap() == PackageStatus::Delivered {
+            //
+
+            let train_vec = timeline.trains_with_less_time(&train.name());
+
+            traced!(&train_vec);
+            traced!(&timeline);
+
+            let mut train_indices: Vec<usize> = Vec::new();
+
+            for (_, train_) in trains.enumerate_trains() {
+                for tr_v in train_vec.clone() {
+                    if *train_.name() == tr_v {
+                        train_indices.push(train_.current_index() as usize);
+
+                        // train.update_name(train_.name().to_string());
+                    }
+                }
+            }
+
+            traced!(&train_indices);
+
+            let mut near: Vec<usize> = Vec::new();
+
+            if train_indices.len() >= 1 {
+                near = find_nearest_trains(pkg.from().try_into().unwrap(), &train_indices);
+            }
+
+            traced!(&near);
+            traced!(&train);
+
+            let train_ = trains.find_train_by_index(*near.first().unwrap()).unwrap();
+
+            traced!(&train_);
+        }
 
         // We arrived
         next_station = get_next(
@@ -824,6 +977,18 @@ impl PackageTrainMapping {
 
     fn get_train_mut(&mut self, package: &Package) -> Option<&mut Train> {
         self.mapping.get_mut(package)
+    }
+
+    fn modify_or_replace_train(&mut self, package: &Package, new_train: Train) {
+        if let Some(existing_train) = self.mapping.get_mut(package) {
+            *existing_train = new_train;
+        } else {
+            self.mapping.insert(package.clone(), new_train);
+        }
+    }
+
+    fn remove_package(&mut self, package: &Package) {
+        self.mapping.remove(package);
     }
 }
 
@@ -1184,6 +1349,10 @@ impl Train {
     pub fn update_current_idx(&mut self, index: u32) {
         self.current = index
     }
+
+    pub fn update_name(&mut self, name_: String) {
+        self.name = name_
+    }
 }
 
 /// All trains
@@ -1237,6 +1406,14 @@ impl Trains {
     // pub fn get_name_by_idx(&self, index:u32) -> String {
 
     // }
+
+    // pub fn find_train_by_index(&self, index: usize) -> Option<&Train> {
+    //     self.trains.get(index)
+    // }
+
+    pub fn find_train_by_index(&mut self, index: usize) -> Option<&mut Train> {
+        self.trains.get_mut(index)
+    }
 }
 
 #[derive(Debug, Clone)]

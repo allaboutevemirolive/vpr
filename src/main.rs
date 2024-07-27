@@ -43,25 +43,39 @@ pub fn start_searching(
                 let tr_indices = stat_c.indices_of_trains(current_locations);
 
                 // Get pkg.from()
+                // By default this
                 let nearest_indices =
                     find_nearest_trains(stat_c.get_station_index(pkg.from()).unwrap(), &tr_indices);
                 tracer!(&nearest_indices);
 
+                // let tr_idx = stat_c.get_station_index(&tr_m.train.to_string()).unwrap();
+
+                // for trr in tr_c.iter_mut() {
+                //     //
+                // }
+
                 // process::exit(1);
+
+                if pkg.name() == "K2" {
+                    let locs = tr_c.current_locations();
+                    tracer!(&locs);
+                    tracer!(&stat_c);
+                    tracer!(&tr_indices);
+                    process::exit(1);
+                }
 
                 if let Some(nearest) = nearest_indices.first() {
                     let station_name = stat_c.get_station_name(*nearest).unwrap();
 
                     tracer!(&station_name);
 
-                    if pkg.name() == "K2" {
-                        let locs = tr_c.current_locations();
-                        tracer!(&locs);
-                        tracer!(&stat_c);
-                        tracer!(&tr_indices);
-                        process::exit(1);
-                    }
-
+                    // if pkg.name() == "K2" {
+                    //     let locs = tr_c.current_locations();
+                    //     tracer!(&locs);
+                    //     tracer!(&stat_c);
+                    //     tracer!(&tr_indices);
+                    //     process::exit(1);
+                    // }
                     // process::exit(1);
 
                     // Check if the package's 'from' location matches the nearest station
@@ -77,7 +91,7 @@ pub fn start_searching(
                         tr_c.push_train_carriage(station_name, pkg);
                         tracer!(&tr_c);
                     } else {
-                        let from = pkg.to().clone();
+                        let from = pkg.from().clone();
 
                         // Package not same as train index
                         move_train(
@@ -103,6 +117,14 @@ pub fn start_searching(
                         tracer!(&pkg_tracker);
                         tracer!(&tr_c);
                         // process::exit(1);
+
+                        if pkg.name() == "K2" {
+                            let locs = tr_c.current_locations();
+                            tracer!(&locs);
+                            tracer!(&stat_c);
+                            tracer!(&tr_indices);
+                            process::exit(1);
+                        }
                     }
                 }
 
@@ -236,7 +258,29 @@ pub fn move_train(
 
     let train_idx = &stat_c.get_station_name(nearest_idx).unwrap();
 
+    let mut tr_idx = 0;
+
+    for (idx, tr) in tr_c.iter_mut().enumerate() {
+        // How to get train on specific index and modify it?
+        if tr.current == **train_idx {
+            tr_idx = idx;
+
+            break;
+        }
+    }
+
+    if pkg.name() == "K2" {
+        tracer!(&train_idx);
+        // process::exit(1);
+    }
+
     // let mut num = 0;
+
+    // if pkg.name() == "K2" {
+    //     tracer!(&from);
+    //     tracer!(&stat_c.get_station_name(nearest_idx).unwrap());
+    //     process::exit(1);
+    // }
 
     // while num != 3 {
     while from.clone() != *stat_c.get_station_name(nearest_idx).unwrap() {
@@ -265,16 +309,23 @@ pub fn move_train(
         for tr in tr_c.iter_mut() {
             if tr.current == **train_idx {
                 for pkg_rc in tr.packages.iter() {
-                    picked.push(pkg_rc.1.clone()); // Push the cloned Package
+                    if !loggerize.already_add(pkg_rc.1) {
+                        picked.push(pkg_rc.1.clone());
+                        loggerize.push(pkg_rc.1.clone());
+                    }
                 }
             }
 
-            if *from == direction {
-                for pkg_rc in tr.packages.iter() {
-                    dropped.push(pkg_rc.1.clone()); // Push the cloned Package
-                                                    // process::exit(1);
+            if pkg_tracker.get_status(&pkg).unwrap() == PackageStatus::InTransit {
+                if *from == direction {
+                    for pkg_rc in tr.packages.iter() {
+                        dropped.push(pkg_rc.1.clone());
+                    }
                 }
             }
+
+            tracer!(&from);
+            // tracer!(&)
             tracer!(&stat_c.get_station_name(nearest_idx).unwrap());
             tracer!(&direction);
         }
@@ -289,11 +340,11 @@ pub fn move_train(
 
         tr_m.with_time(tl.get_time(&station_name));
 
-        for tr in tr_c.iter_mut() {
-            if tr.current == *station_name {
-                tr_m.with_train(tr.name().to_string());
-            }
-        }
+        // for tr in tr_c.iter_mut() {
+        //     if tr.current == *station_name {
+        //         tr_m.with_train(tr.name().to_string());
+        //     }
+        // }
 
         tr_m.with_from(station_name.to_string());
         tr_m.with_to(direction.clone());
@@ -303,11 +354,11 @@ pub fn move_train(
         let distance = dist_m.get_distance(station_name.to_string(), direction.clone());
         let numerize = distance.parse::<u32>().unwrap();
 
-        for tr in tr_c.iter_mut() {
-            if tr.current == *station_name {
-                tl.modify_time(&tr.name, numerize);
-            }
-        }
+        // for tr in tr_c.iter_mut() {
+        //     if tr.current == *station_name {
+        //         tl.modify_time(&tr.name, numerize);
+        //     }
+        // }
 
         let curr_name = stat_c.get_station_name(nearest_idx).unwrap();
         let curr_idx = stat_c.get_station_index(&curr_name);
@@ -317,14 +368,46 @@ pub fn move_train(
         tracer!(&near_idx);
         tracer!(&nearest_idx);
 
+        // if pkg.name() == "K2" {
+        //     tracer!(&curr_idx);
+        //     tracer!(&near_idx);
+        //     tracer!(&nearest_idx);
+        //     process::exit(1);
+        // }
+
+        // if pkg.name() == "K2" {
+        //     process::exit(1);
+        // }
+
         // Update current index for train.
-        for tr in tr_c.iter_mut() {
-            tracer!(&tr.current);
-            tracer!(&stat_c.get_station_name(nearest_idx).unwrap());
-            if tr.current == **train_idx {
-                tr.update_current_index(curr_name.to_string());
-            }
-        }
+        // for tr in tr_c.iter_mut() {
+        //     // How to get train on specific index and modify it?
+        //     if tr.current == **train_idx {
+        //         tr.update_current_index(direction.clone());
+        //         tl.modify_time(&tr.name(), numerize);
+        //         tr_m.with_train(tr.name().to_string());
+        //     }
+        // }
+
+        let tr_ = tr_c.get_train_mut(tr_idx).unwrap();
+        tr_.update_current_index(direction.clone());
+        tr_m.with_train(tr_.name().to_string());
+        tr_m.plus_time(tl.get_time(&tr_.name()));
+
+        // Our output
+        tracer!(&tr_m);
+
+        // We want the output late in printing time
+        tl.accumulate_time(&tr_.name(), numerize);
+        tr_m.plus_time(tl.get_time(&tr_.name()));
+
+        tracer!(&tr_c);
+        tracer!(&tl);
+        // tracer!(&tr_m);
+        tracer!(&loggerize);
+
+        tracer!(&train_idx);
+        tracer!(&station_name);
         tracer!(&tr_c);
         // process::exit(1);
 
@@ -343,9 +426,6 @@ pub fn move_train(
         tracer!(&direction);
 
         tracer!(&station_name);
-
-        // Our output
-        tracer!(&tr_m);
 
         tracer!(&tr_c);
         tracer!(&stat_c);
@@ -398,9 +478,9 @@ pub fn try_pick_package(
                     tracer!(&waiting);
                     tracer!(&readypick);
                     tracer!(&cands);
-                    if tr.current_index() == pkg.from() {
-                        process::exit(1);
-                    }
+                    // if tr.current_index() == pkg.from() {
+                    //     process::exit(1);
+                    // }
                     // process::exit(1);
                 }
             }
@@ -415,25 +495,22 @@ pub fn try_pick_package(
 
 #[derive(Debug)]
 pub struct Logger {
-    log: Vec<Package>,
+    log: BTreeMap<String, Package>,
 }
 
 impl Logger {
     pub fn new() -> Self {
-        Self { log: Vec::new() }
+        Self {
+            log: BTreeMap::new(),
+        }
     }
 
     pub fn already_add(&self, pkg: &Package) -> bool {
-        for pkg_ in self.log.clone() {
-            if pkg_.name() == pkg.name() {
-                return true;
-            }
-        }
-        false
+        self.log.contains_key(&pkg.name)
     }
 
-    pub fn push(&mut self, pkg: &Package) {
-        self.log.push(pkg.clone())
+    pub fn push(&mut self, pkg: Package) {
+        self.log.insert(pkg.name.clone(), pkg);
     }
 }
 
@@ -1119,6 +1196,13 @@ impl Timeline {
         }
     }
 
+    pub fn accumulate_time(&mut self, train: &str, additional_time: u32) {
+        self.times
+            .entry(train.to_string())
+            .and_modify(|time| *time += additional_time)
+            .or_insert(additional_time);
+    }
+
     pub fn trains_with_less_time(&self, train: &str) -> Vec<String> {
         let train_time = self.get_time(train);
         self.times
@@ -1155,6 +1239,10 @@ impl TrainMovement {
 
     pub fn with_time(&mut self, time: u32) {
         self.time = time;
+    }
+
+    pub fn plus_time(&mut self, time: u32) {
+        self.time += time;
     }
 
     pub fn with_train(&mut self, train_name: String) {

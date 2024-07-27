@@ -3,7 +3,10 @@ mod test;
 mod test_unit;
 mod utils;
 
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
+use std::hash::{Hash, Hasher};
+use std::process;
 
 fn main() {
     println!("Hello, world!");
@@ -11,32 +14,522 @@ fn main() {
 
 pub fn start_searching(
     mut pkg_c: PackageCollection,
-    tr_c: TrainCollection,
+    mut pkg_c_2: PackageCollection,
+    tr_c: &mut TrainCollection,
     stat_c: StationCollection,
     gr: Graph,
     cands: PackageCandidates,
-    tr_m: TrainMovement,
-    dist_m: DistanceMap,
-    tl: Timeline,
+    tr_m: &mut TrainMovement,
+    dist_m: &mut DistanceMap,
+    tl: &mut Timeline,
+    mut pkg_tracker: PackageTracker,
+    mut loggerize: Logger,
 ) {
-    //
+    // let mut num = 0;
+
     for pkg in pkg_c.iter_mut() {
-        while *pkg.status() != PackageStatus::Delivered {
-            //
-            if *pkg.status() == PackageStatus::AwaitingPickup {
-                //
+        tracer!(&pkg);
+
+        // if pkg.name == "K2" {
+        //     continue;
+        // }
+
+        while pkg_tracker.get_status(&pkg).unwrap() != PackageStatus::Delivered {
+            if pkg_tracker.get_status(&pkg).unwrap() == PackageStatus::AwaitingPickup {
+                // Store the result of current_locations in a variable with a longer lifetime
+                let current_locations = tr_c.current_locations();
+
+                // Get the train indices from the station collection
+                let tr_indices = stat_c.indices_of_trains(current_locations);
+
+                // Get pkg.from()
+                let nearest_indices =
+                    find_nearest_trains(stat_c.get_station_index(pkg.from()).unwrap(), &tr_indices);
+                tracer!(&nearest_indices);
+
+                // process::exit(1);
+
+                if let Some(nearest) = nearest_indices.first() {
+                    let station_name = stat_c.get_station_name(*nearest).unwrap();
+
+                    tracer!(&station_name);
+
+                    if pkg.name() == "K2" {
+                        let locs = tr_c.current_locations();
+                        tracer!(&locs);
+                        tracer!(&stat_c);
+                        tracer!(&tr_indices);
+                        process::exit(1);
+                    }
+
+                    // process::exit(1);
+
+                    // Check if the package's 'from' location matches the nearest station
+                    if pkg.from() == stat_c.get_station_name(*nearest).unwrap() {
+                        tracer!(nearest);
+                        tracer!(&pkg);
+
+                        let station_name = stat_c.get_station_name(*nearest).unwrap();
+
+                        tracer!(&station_name);
+
+                        // Package same as train index
+                        tr_c.push_train_carriage(station_name, pkg);
+                        tracer!(&tr_c);
+                    } else {
+                        let from = pkg.to().clone();
+
+                        // Package not same as train index
+                        move_train(
+                            &stat_c.clone(),
+                            tr_c,
+                            nearest,
+                            pkg,
+                            gr.clone(),
+                            // items.clone(),
+                            pkg_c_2.clone(),
+                            pkg_tracker.clone(),
+                            &mut loggerize,
+                            tr_m,
+                            tl,
+                            dist_m,
+                            &from,
+                        );
+
+                        pkg_tracker
+                            .update_status(&pkg, PackageStatus::InTransit)
+                            .unwrap();
+
+                        tracer!(&pkg_tracker);
+                        tracer!(&tr_c);
+                        // process::exit(1);
+                    }
+                }
+
+                // num += 1;
+
+                // if num == 6 {
+                //     break;
+                // }
             }
 
-            if *pkg.status() == PackageStatus::InTransit {
-                //
+            if pkg_tracker.get_status(&pkg).unwrap() == PackageStatus::InTransit {
+                // Store the result of current_locations in a variable with a longer lifetime
+                let current_locations = tr_c.current_locations();
+
+                // Get the train indices from the station collection
+                let tr_indices = stat_c.indices_of_trains(current_locations);
+
+                // Get nearest index to pkg.to()
+                let nearest_indices =
+                    find_nearest_trains(stat_c.get_station_index(pkg.to()).unwrap(), &tr_indices);
+
+                tracer!(&nearest_indices);
+
+                let from = pkg.to().clone();
+
+                if let Some(nearest) = nearest_indices.first() {
+                    move_train(
+                        &stat_c.clone(),
+                        tr_c,
+                        nearest,
+                        pkg,
+                        gr.clone(),
+                        // items.clone(),
+                        pkg_c_2.clone(),
+                        pkg_tracker.clone(),
+                        &mut loggerize,
+                        tr_m,
+                        tl,
+                        dist_m,
+                        &from,
+                    );
+                }
+
+                pkg_tracker
+                    .update_status(&pkg, PackageStatus::Delivered)
+                    .unwrap();
+
+                break;
             }
+
+            // pkg_tracker
+            //     .update_status(pkg, PackageStatus::Delivered)
+            //     .unwrap();
+            tracer!(&pkg_tracker);
+        }
+        // break;
+        tracer!("Skip");
+        // process::exit(1);
+    }
+}
+
+pub fn which_direction(
+    gr: Graph,
+    tr_c: &mut TrainCollection,
+    // from: String,
+    nearest: &usize,
+    // pkg: &mut Package,
+    stat_c: &StationCollection,
+    from: String,
+) -> String {
+    // let from = pkg.from();
+    let target_station = stat_c.get_station_name(*nearest).unwrap();
+    let neighbours = gr.get_neighbors(target_station).unwrap();
+
+    let (left, right) = match neighbours.as_slice() {
+        [] => (String::new(), String::new()),
+        [first] => (first.clone(), String::new()),
+        [first, second] => (first.clone(), second.clone()),
+        _ => (String::new(), String::new()),
+    };
+
+    tracer!(&left);
+    tracer!(&right);
+    tracer!(&from);
+
+    if left == *from || right.is_empty() {
+        return left;
+    }
+
+    if right == *from {
+        return right;
+    }
+
+    tracer!(stat_c.get_station_index(&from));
+    tracer!(stat_c.get_station_index(&target_station));
+
+    if stat_c.get_station_index(&from) > stat_c.get_station_index(&target_station) {
+        return right;
+    }
+
+    left
+}
+
+pub fn move_train(
+    stat_c: &StationCollection,
+    tr_c: &mut TrainCollection,
+    // from: String,
+    nearest: &usize,
+    pkg: &mut Package,
+    gr: Graph,
+    mut pkg_c_2: PackageCollection,
+    mut pkg_tracker: PackageTracker,
+    loggerize: &mut Logger,
+    tr_m: &mut TrainMovement,
+    tl: &mut Timeline,
+    dist_m: &mut DistanceMap,
+    from: &String,
+) {
+    let mut direction = which_direction(
+        gr.clone(),
+        tr_c,
+        nearest,
+        // pkg,
+        &stat_c.clone(),
+        from.clone(),
+    );
+
+    tracer!(&direction);
+
+    let mut nearest_idx = nearest.clone();
+
+    let train_idx = &stat_c.get_station_name(nearest_idx).unwrap();
+
+    // let mut num = 0;
+
+    // while num != 3 {
+    while from.clone() != *stat_c.get_station_name(nearest_idx).unwrap() {
+        try_pick_package(
+            pkg,
+            tr_c,
+            &nearest_idx,
+            pkg_c_2.clone(),
+            pkg_tracker.clone(),
+            stat_c,
+            from,
+        );
+
+        let mut picked: Vec<Package> = Vec::new();
+        let mut dropped: Vec<Package> = Vec::new();
+
+        // How to get train name?
+        // Get station name => Get train origin aka station.
+        let station_name = stat_c.get_station_name(nearest_idx).unwrap();
+
+        tracer!(&station_name);
+
+        // TODO:
+        // tr_c.push_train_carriage(station_name, pkg);
+
+        for tr in tr_c.iter_mut() {
+            if tr.current == **train_idx {
+                for pkg_rc in tr.packages.iter() {
+                    picked.push(pkg_rc.1.clone()); // Push the cloned Package
+                }
+            }
+
+            if *from == direction {
+                for pkg_rc in tr.packages.iter() {
+                    dropped.push(pkg_rc.1.clone()); // Push the cloned Package
+                                                    // process::exit(1);
+                }
+            }
+            tracer!(&stat_c.get_station_name(nearest_idx).unwrap());
+            tracer!(&direction);
+        }
+        tracer!(&dropped);
+        tracer!(&picked);
+
+        // process::exit(1);
+
+        for p in picked.iter_mut() {
+            tr_c.push_train_carriage(&station_name, p);
+        }
+
+        tr_m.with_time(tl.get_time(&station_name));
+
+        for tr in tr_c.iter_mut() {
+            if tr.current == *station_name {
+                tr_m.with_train(tr.name().to_string());
+            }
+        }
+
+        tr_m.with_from(station_name.to_string());
+        tr_m.with_to(direction.clone());
+        tr_m.with_picked_pkgs(picked);
+        tr_m.with_drop_pkgs(dropped);
+
+        let distance = dist_m.get_distance(station_name.to_string(), direction.clone());
+        let numerize = distance.parse::<u32>().unwrap();
+
+        for tr in tr_c.iter_mut() {
+            if tr.current == *station_name {
+                tl.modify_time(&tr.name, numerize);
+            }
+        }
+
+        let curr_name = stat_c.get_station_name(nearest_idx).unwrap();
+        let curr_idx = stat_c.get_station_index(&curr_name);
+        let near_idx = stat_c.get_station_index(&direction);
+
+        tracer!(&curr_idx);
+        tracer!(&near_idx);
+        tracer!(&nearest_idx);
+
+        // Update current index for train.
+        for tr in tr_c.iter_mut() {
+            tracer!(&tr.current);
+            tracer!(&stat_c.get_station_name(nearest_idx).unwrap());
+            if tr.current == **train_idx {
+                tr.update_current_index(curr_name.to_string());
+            }
+        }
+        tracer!(&tr_c);
+        // process::exit(1);
+
+        // Reassign to closing gap between train and pkg.to()
+        nearest_idx = near_idx.unwrap();
+
+        direction = which_direction(
+            gr.clone(),
+            tr_c,
+            &nearest_idx,
+            // pkg,
+            &stat_c.clone(),
+            from.to_string(),
+        );
+
+        tracer!(&direction);
+
+        tracer!(&station_name);
+
+        // Our output
+        tracer!(&tr_m);
+
+        tracer!(&tr_c);
+        tracer!(&stat_c);
+        tracer!(&from);
+
+        tracer!(stat_c.get_station_name(nearest_idx).unwrap());
+        tracer!(&direction);
+
+        // Cleaning after prin output
+        tr_m.picked_pkgs.clear();
+    }
+    tracer!(&tr_c);
+    // process::exit(1);
+}
+
+pub fn try_pick_package(
+    pkg: &mut Package,
+    tr_c: &mut TrainCollection,
+    nearest: &usize,
+    pkg_c_2: PackageCollection,
+    pkg_tracker: PackageTracker,
+    stat_c: &StationCollection,
+    from: &String,
+) {
+    let train_name = stat_c.get_station_name(*nearest).unwrap();
+
+    tracer!(&train_name);
+
+    let mut cands: Vec<Package> = Vec::new();
+
+    for tr in tr_c.iter_mut() {
+        if tr.origin == *train_name {
+            for pkg_ in pkg_c_2.iter() {
+                if let Some(remaining) = tr.remain_capacity().checked_sub(pkg.weight()) {
+                    let loadable = true;
+                    let waiting =
+                        pkg_tracker.get_status(pkg).unwrap() == PackageStatus::AwaitingPickup;
+                    let readypick = pkg_.from() == tr.current_index();
+
+                    if loadable && waiting && readypick {
+                        cands.push(pkg.clone());
+                    }
+
+                    tracer!(&remaining);
+                    tracer!(&pkg.weight());
+                    tracer!(&pkg.from());
+                    tracer!(&tr.current_index());
+
+                    tracer!(&loadable);
+                    tracer!(&waiting);
+                    tracer!(&readypick);
+                    tracer!(&cands);
+                    if tr.current_index() == pkg.from() {
+                        process::exit(1);
+                    }
+                    // process::exit(1);
+                }
+            }
+        }
+    }
+
+    for pkg_ in cands.iter() {
+        tr_c.push_train_carriage(train_name, pkg_);
+        // process::exit(1);
+    }
+}
+
+#[derive(Debug)]
+pub struct Logger {
+    log: Vec<Package>,
+}
+
+impl Logger {
+    pub fn new() -> Self {
+        Self { log: Vec::new() }
+    }
+
+    pub fn already_add(&self, pkg: &Package) -> bool {
+        for pkg_ in self.log.clone() {
+            if pkg_.name() == pkg.name() {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn push(&mut self, pkg: &Package) {
+        self.log.push(pkg.clone())
+    }
+}
+
+pub struct PackageName {
+    name: Vec<String>,
+}
+
+impl PackageName {
+    // Creates a new PackageName with an empty Vec<String>
+    pub fn new() -> Self {
+        PackageName { name: Vec::new() }
+    }
+
+    // Adds a new name to the package
+    pub fn add_name(&mut self, name: String) {
+        self.name.push(name);
+    }
+
+    // Retrieves a reference to the names
+    pub fn names(&self) -> &[String] {
+        &self.name
+    }
+
+    // Retrieves the number of names in the package
+    pub fn count(&self) -> usize {
+        self.name.len()
+    }
+
+    // Checks if the package contains a specific name
+    pub fn contains(&self, name: &str) -> bool {
+        self.name.contains(&name.to_string())
+    }
+
+    // Removes a specific name from the package
+    pub fn remove_name(&mut self, name: &str) -> bool {
+        if let Some(pos) = self.name.iter().position(|x| x == name) {
+            self.name.remove(pos);
+            true
+        } else {
+            false
+        }
+    }
+
+    // Returns an iterator over the names in the package
+    pub fn iter(&self) -> impl Iterator<Item = &String> {
+        self.name.iter()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PackageTracker {
+    track: BTreeMap<Package, PackageStatus>,
+}
+
+impl PackageTracker {
+    pub fn new() -> Self {
+        Self {
+            track: BTreeMap::new(),
+        }
+    }
+
+    // Add a package to the tracker
+    pub fn add_package(&mut self, package: Package, status: PackageStatus) {
+        self.track.insert(package, status);
+    }
+
+    // Update the status of a package
+    pub fn update_status(
+        &mut self,
+        package: &Package,
+        new_status: PackageStatus,
+    ) -> Result<(), &'static str> {
+        if let Some(status) = self.track.get_mut(package) {
+            *status = new_status;
+            Ok(())
+        } else {
+            Err("Package not found")
+        }
+    }
+
+    // Get the status of a package
+    pub fn get_status(&self, package: &Package) -> Option<PackageStatus> {
+        self.track.get(package).cloned()
+    }
+
+    // Remove a package from the tracker
+    pub fn remove_package(&mut self, package: &Package) -> Result<(), &'static str> {
+        if self.track.remove(package).is_some() {
+            Ok(())
+        } else {
+            Err("Package not found")
         }
     }
 }
 
-pub fn move_train() {}
-
-#[derive(Debug, Clone, Eq, Hash, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum PackageStatus {
     InTransit,
     Delivered,
@@ -45,13 +538,25 @@ pub enum PackageStatus {
     Dummy,
 }
 
-#[derive(Debug, Clone, Eq, Hash, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Package {
     name: String,
     weight: u32,
     from: String,
     to: String,
     status: PackageStatus,
+}
+
+impl Ord for Package {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.name.cmp(&other.name)
+    }
+}
+
+impl PartialOrd for Package {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.name.cmp(&other.name))
+    }
 }
 
 impl Default for Package {
@@ -63,6 +568,15 @@ impl Default for Package {
             to: String::from("Unknown"),
             status: PackageStatus::Dummy,
         }
+    }
+}
+
+impl Hash for Package {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.weight.hash(state);
+        self.from.hash(state);
+        self.to.hash(state);
     }
 }
 
@@ -118,14 +632,14 @@ impl Package {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Train {
     name: String,
     capacity: u32,
     remain_capacity: u32,
     origin: String,
     current: String,
-    packages: Vec<Package>,
+    packages: BTreeMap<String, Package>,
     time: u32,
 }
 
@@ -139,6 +653,11 @@ impl Train {
         packages: Vec<Package>,
         time: u32,
     ) -> Self {
+        let packages = packages
+            .into_iter()
+            .map(|pkg| (pkg.name.clone(), pkg))
+            .collect();
+
         Self {
             name,
             capacity,
@@ -165,9 +684,11 @@ impl Train {
         self.remain_capacity
     }
 
-    /// Add a package to the train.
-    pub fn push_package(&mut self, package: Package) {
-        self.packages.push(package);
+    /// Add a vector of packages to the train.
+    pub fn push_packages(&mut self, packages: Vec<Package>) {
+        for pkg in packages {
+            self.packages.insert(pkg.name.clone(), pkg);
+        }
     }
 
     /// Get the origin of the train.
@@ -192,22 +713,24 @@ impl Train {
 
     /// Check if a package is already loaded on the train.
     pub fn already_loaded_package(&self, package: &Package) -> bool {
-        self.packages.iter().any(|pkg| pkg.name() == package.name())
+        self.packages.contains_key(&package.name)
     }
 
-    /// Load a package onto the train.
-    pub fn load_package(&mut self, pkg: Package) {
-        let pkg_weight = pkg.weight();
-
-        if pkg_weight <= self.remain_capacity {
-            self.packages.push(pkg);
-            self.remain_capacity -= pkg_weight;
+    /// Load a vector of packages onto the train.
+    pub fn load_packages(&mut self, packages: Vec<Package>) {
+        for pkg in packages {
+            if pkg.weight <= self.remain_capacity {
+                self.packages.insert(pkg.name.clone(), pkg.clone());
+                self.remain_capacity -= pkg.weight;
+            }
         }
     }
 
     /// Remove a package from the train.
     pub fn remove_package(&mut self, package: &Package) {
-        self.packages.retain(|pkg| pkg.name() != package.name());
+        if self.packages.remove(&package.name).is_some() {
+            self.remain_capacity += package.weight;
+        }
     }
 
     /// Update the current index of the train.
@@ -265,18 +788,42 @@ impl TrainCollection {
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Train> {
         self.trains.iter_mut()
     }
+
+    // Method to return a Vec<String> of current locations of all trains
+    pub fn current_locations(&self) -> Vec<String> {
+        self.trains
+            .iter()
+            .map(|train| train.current.clone()) // Collect the current location of each train
+            .collect()
+    }
+
+    /// Push package at train's index
+    pub fn push_train_carriage(&mut self, train_name: &str, pkg: &Package) {
+        for train in self.trains.iter_mut() {
+            if train.current == train_name {
+                train.packages.insert(pkg.name().to_string(), pkg.clone());
+                // return Ok(());
+                break;
+            }
+        }
+        // Err("Train not found")
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PackageCollection {
-    packages: Vec<Package>,
+    packages: BTreeMap<String, Package>,
 }
 
 impl PackageCollection {
     pub fn new() -> Self {
         Self {
-            packages: Vec::new(),
+            packages: BTreeMap::new(),
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.packages.len()
     }
 
     pub fn add_package(
@@ -287,26 +834,26 @@ impl PackageCollection {
         to: String,
         status: PackageStatus,
     ) {
-        let package = Package::new(name, weight, from, to, status);
-        self.packages.push(package);
+        let package = Package::new(name.clone(), weight, from, to, status);
+        self.packages.insert(name, package);
     }
 
-    pub fn get_package(&self, index: usize) -> Option<&Package> {
-        self.packages.get(index)
+    pub fn get_package(&self, name: &str) -> Option<&Package> {
+        self.packages.get(name)
     }
 
-    pub fn get_package_mut(&mut self, index: usize) -> Option<&mut Package> {
-        self.packages.get_mut(index)
+    pub fn get_package_mut(&mut self, name: &str) -> Option<&mut Package> {
+        self.packages.get_mut(name)
     }
 
     // Method to get an immutable iterator over the packages
     pub fn iter(&self) -> impl Iterator<Item = &Package> {
-        self.packages.iter()
+        self.packages.values()
     }
 
     // Method to get a mutable iterator over the packages
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Package> {
-        self.packages.iter_mut()
+        self.packages.values_mut()
     }
 }
 
@@ -378,6 +925,19 @@ impl StationCollection {
     // Optional: Method to get an iterator over the station names only
     pub fn names(&self) -> impl Iterator<Item = &String> {
         self.stations.values()
+    }
+
+    // Method to return Vec<usize> of indices corresponding to the provided train names
+    pub fn indices_of_trains(&self, train_names: Vec<String>) -> Vec<usize> {
+        train_names
+            .iter()
+            .filter_map(|name| {
+                self.stations
+                    .iter()
+                    .find(|(_, station_name)| *station_name == name)
+                    .map(|(index, _)| *index)
+            })
+            .collect()
     }
 }
 
@@ -573,11 +1133,11 @@ impl Timeline {
 pub struct TrainMovement {
     time: u32,
     train: String,
-    from: u32,
-    picked_pkgs: Vec<Package>,
-    to: u32,
-    drop_pkgs: Vec<Package>,
-    carriages: Vec<Package>,
+    from: String,
+    to: String,
+    picked_pkgs: BTreeMap<String, Package>,
+    drop_pkgs: BTreeMap<String, Package>,
+    carriages: BTreeMap<String, Package>,
 }
 
 impl TrainMovement {
@@ -585,59 +1145,46 @@ impl TrainMovement {
         Self {
             time: 0,
             train: "".to_string(),
-            from: 0,
-            picked_pkgs: Vec::new(),
-            to: 0,
-            drop_pkgs: Vec::new(),
-            carriages: Vec::new(),
+            from: "".to_string(),
+            to: "".to_string(),
+            picked_pkgs: BTreeMap::new(),
+            drop_pkgs: BTreeMap::new(),
+            carriages: BTreeMap::new(),
         }
     }
 
     pub fn with_time(&mut self, time: u32) {
-        self.time = time
+        self.time = time;
     }
 
     pub fn with_train(&mut self, train_name: String) {
-        self.train = train_name
+        self.train = train_name;
     }
 
-    pub fn with_from(&mut self, from_index: u32) {
-        self.from = from_index
+    pub fn with_from(&mut self, from_index: String) {
+        self.from = from_index;
     }
 
-    pub fn with_to(&mut self, to_index: u32) {
-        self.to = to_index
+    pub fn with_to(&mut self, to_index: String) {
+        self.to = to_index;
     }
 
     pub fn with_picked_pkgs(&mut self, picked: Vec<Package>) {
         for pkg in picked {
-            if !(*pkg.status() == PackageStatus::Dummy) {
-                self.picked_pkgs.push(pkg.clone());
-                self.carriages.push(pkg);
-            }
+            self.picked_pkgs.insert(pkg.name.clone(), pkg.clone());
+            self.carriages.insert(pkg.name.clone(), pkg);
         }
     }
 
     pub fn with_drop_pkgs(&mut self, drop: Vec<Package>) {
-        let mut index: usize = 0;
-        let mut found = false;
-        for (_, pkg) in drop.iter().enumerate() {
-            self.drop_pkgs.push(pkg.clone());
-            for (idx, carr) in self.carriages.iter().enumerate() {
-                if carr.name() == pkg.name() {
-                    index = idx;
-                    found = true;
-                }
-            }
-        }
-
-        if found {
-            self.carriages.remove(index);
+        for pkg in drop {
+            self.drop_pkgs.insert(pkg.name.clone(), pkg.clone());
+            self.carriages.remove(&pkg.name);
         }
     }
 
     pub fn with_carriages(&mut self, pkg: Package) {
-        self.carriages.push(pkg)
+        self.carriages.insert(pkg.name.clone(), pkg);
     }
 }
 

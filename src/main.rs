@@ -5,8 +5,11 @@ mod utils;
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
+use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::{fmt, process};
+
+#[allow(unused_imports)]
+use std::process;
 
 fn main() {
     println!("Hello, world!");
@@ -18,7 +21,6 @@ pub fn start_searching(
     tr_c: &mut TrainCollection,
     stat_c: StationCollection,
     gr: Graph,
-    cands: PackageCandidates,
     tr_m: &mut TrainMovement,
     dist_m: &mut DistanceMap,
     tl: &mut Timeline,

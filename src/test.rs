@@ -100,7 +100,7 @@ mod test_output {
         }
 
         let mut train_movement = TrainMovement::new();
-        let package_candidates = PackageCandidates::new();
+        // let package_candidates = PackageCandidates::new();
 
         let mut package_tracker = PackageTracker::new();
 
@@ -125,7 +125,6 @@ mod test_output {
             &mut train_collection,
             station_collection,
             graph,
-            package_candidates,
             &mut train_movement,
             &mut distance_map,
             &mut timeline,

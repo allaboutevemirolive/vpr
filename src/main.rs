@@ -39,29 +39,27 @@ pub fn start_searching(
                 // Get pkg.from()
                 let nearest_indices =
                     find_nearest_trains(stat_c.get_station_index(pkg.from()).unwrap(), &tr_indices);
-                tracer!(&nearest_indices);
 
+                tracer!(&nearest_indices);
                 tracer!(&current_locations);
                 tracer!(&tr_indices);
                 tracer!(&nearest_indices);
 
                 if let Some(nearest) = nearest_indices.first() {
                     let station_name = stat_c.get_station_name(*nearest).unwrap();
-
                     tracer!(&station_name);
 
                     // Check if the package's 'from' location matches the nearest station
                     if pkg.from() == stat_c.get_station_name(*nearest).unwrap() {
-                        tracer!(nearest);
-                        tracer!(&pkg);
-
                         // How to get initial postion of train
                         let station_name = stat_c.get_station_name(*nearest).unwrap();
 
-                        tracer!(&station_name);
-
                         // Package same as train index
                         tr_c.push_train_carriage(station_name, pkg);
+
+                        tracer!(&station_name);
+                        tracer!(nearest);
+                        tracer!(&pkg);
                         tracer!(&tr_c);
                     } else {
                         let from = pkg.from().clone();
@@ -82,56 +80,22 @@ pub fn start_searching(
                             &from,
                         );
 
-                        tracer!(&nearest);
-
                         let station_name = stat_c.get_station_name(*nearest).unwrap();
-
-                        tracer!(&station_name);
-
-                        // process::exit(1);
-                        // // Sanity check, if train didnt carry any packages
-                        // if !pkg_check.packages.is_empty() {
-                        //     pkg_tracker
-                        //         .update_status(&pkg, PackageStatus::InTransit)
-                        //         .unwrap();
-                        // }
 
                         pkg_tracker
                             .update_status(&pkg, PackageStatus::InTransit)
                             .unwrap();
 
-                        // traced!(&pkg_tracker);
+                        tracer!(&station_name);
+                        tracer!(&nearest);
                         tracer!(&tr_c);
-
-                        // process::exit(1);
-                        // if pkg.name() == "K2" {
-                        //     let locs = tr_c.current_locations();
-                        //     tracer!(&locs);
-                        //     tracer!(&stat_c);
-                        //     tracer!(&tr_indices);
-                        //     process::exit(1);
-                        // }
                     }
                 }
             }
 
             if pkg_tracker.get_status(&pkg).unwrap() == PackageStatus::InTransit {
-                // // Store the result of current_locations in a variable with a longer lifetime
-                // let current_locations = tr_c.current_locations();
-
-                // // Get the train indices from the station collection
-                // let tr_indices = stat_c.indices_of_trains(current_locations.clone());
-
-                // // Get nearest index to pkg.to()
-                // let nearest_indices =
-                //     find_nearest_trains(stat_c.get_station_index(pkg.to()).unwrap(), &tr_indices);
-
+                // Get destination position
                 let from = pkg.to().clone();
-
-                // tracer!(&nearest_indices);
-                // tracer!(&current_locations);
-                // tracer!(&tr_indices);
-                // tracer!(&tr_c);
 
                 // Get current train index that hold our current package
                 let curr_train = tr_c.find_train_hold_this_pkg(&pkg.name()).unwrap();
@@ -142,7 +106,6 @@ pub fn start_searching(
                     .get_station_index(curr_train.current_index())
                     .unwrap();
 
-                // if let Some(nearest) = nearest_indices.first() {
                 move_train(
                     &stat_c.clone(),
                     tr_c,
@@ -157,7 +120,6 @@ pub fn start_searching(
                     dist_m,
                     &from,
                 );
-                // }
 
                 pkg_tracker
                     .update_status(&pkg, PackageStatus::Delivered)
@@ -171,14 +133,10 @@ pub fn start_searching(
 
 pub fn which_direction(
     gr: Graph,
-    tr_c: &mut TrainCollection,
-    // from: String,
     nearest: &usize,
-    // pkg: &mut Package,
     stat_c: &StationCollection,
     from: String,
 ) -> String {
-    // let from = pkg.from();
     let target_station = stat_c.get_station_name(*nearest).unwrap();
     let neighbours = gr.get_neighbors(target_station).unwrap();
 
@@ -225,11 +183,8 @@ pub fn move_train(
     dist_m: &mut DistanceMap,
     from: &String,
 ) {
-    // Next postion
-    let mut direction = which_direction(gr.clone(), tr_c, nearest, &stat_c.clone(), from.clone());
-    // Current postion
-    // let curr_station = stat_c.get_station_name(*nearest).unwrap();
-
+    // Next postion: Left or Right?
+    let mut direction = which_direction(gr.clone(), nearest, &stat_c.clone(), from.clone());
     tracer!(&direction);
 
     let mut nearest_idx = nearest.clone();
@@ -244,26 +199,15 @@ pub fn move_train(
         }
     }
 
-    // let mut picked: Vec<Package> = Vec::new();
-    // let mut dropped: Vec<Package> = Vec::new();
-
     while from.clone() != *stat_c.get_station_name(nearest_idx).unwrap() {
-        // tr_m.with_picked_pkgs(picked.clone());
-
-        let curr_station = stat_c.get_station_name(nearest_idx).unwrap();
         try_pick_package(
-            pkg,
             tr_c,
-            &nearest_idx,
             pkg_c_2.clone(),
             pkg_tracker.clone(),
-            stat_c,
-            from,
             tl,
             stat_c,
             tr_idx,
             direction.clone(),
-            curr_station.to_string(),
         );
 
         // TODO: Remove. Use `find_train_hold_this_pkg`
@@ -275,20 +219,12 @@ pub fn move_train(
 
         let curr_train = tr_c.find_train_hold_this_pkg(&pkg.name()).unwrap();
 
-        // if pkg_tracker.get_status(&pkg).unwrap() == PackageStatus::AwaitingPickup {
         if *pkg.from() == *station_name {
-            // if pkg_tracker.get_status(&pkg).unwrap() == PackageStatus::AwaitingPickup {
             tr_m.with_picked_pkgs_btree(curr_train.packages.clone());
-            // traced!(&pkg.from());
-            // traced!(&direction);
-            // traced!(&station_name);
-
             pkg_tracker
                 .update_status(&pkg, PackageStatus::InTransit)
                 .unwrap();
-            // }
         }
-        // }
 
         if pkg_tracker.get_status(&pkg).unwrap() == PackageStatus::InTransit {
             if *pkg.to() == direction {
@@ -296,13 +232,9 @@ pub fn move_train(
             }
         }
 
-        // traced!(&pkg_tracker);
-        // tracer!(&picked);
-
         tr_m.with_time(tl.get_time(&station_name));
         tr_m.with_from(station_name.to_string());
         tr_m.with_to(direction.clone());
-        // tr_m.with_drop_pkgs(dropped.clone());
 
         let distance = dist_m.get_distance(station_name.to_string(), direction.clone());
         let numerize = distance.parse::<u32>().unwrap();
@@ -321,40 +253,10 @@ pub fn move_train(
         tr_.update_current_index(direction.clone());
         tr_m.with_train(tr_.name().to_string());
         tr_m.plus_time(tl.get_time(&tr_.name()));
-        // tr_m.with_picked_pkgs(picked.clone());
-
-        // traced!(&picked);
-        // if pkg.from() == station_name {
-        //     // tr_m.with_picked_pkgs(picked.clone());
-        //     println!("\x1b[0;33m{}\x1b[0m", &tr_m);
-        // } else {
-        //     println!("\x1b[0;33m{}\x1b[0m", &tr_m);
-        // }
-        // if first_iter == 0 {
-        //     tr_m.with_picked_pkgs(Vec::new());
-        //     first_iter += 1;
-        // } else if first_iter == 1 {
-        //     tr_m.with_picked_pkgs(picked.clone());
-        //     traced!(&picked);
-        //     // process::exit(1);
-        // }
-
-        // traced!(&pkg);
-        // traced!(&station_name);
-
-        // if tr_m.train == "Q2" {
-        //     traced!(&tr_m);
-        //     process::exit(1);
-        // }
 
         // Our output
         tracer!(&tr_m);
         println!("\x1b[0;33m{}\x1b[0m", &tr_m);
-
-        // tr_m.with_picked_pkgs(picked.clone());
-        // for p in picked.iter_mut() {
-        //     tr_c.push_train_carriage(&station_name, p);
-        // }
 
         // We want the output late in printing time
         tl.accumulate_time(&tr_.name(), numerize);
@@ -371,13 +273,7 @@ pub fn move_train(
         // Reassign to closing gap between train and pkg.to()
         nearest_idx = near_idx.unwrap();
 
-        direction = which_direction(
-            gr.clone(),
-            tr_c,
-            &nearest_idx,
-            &stat_c.clone(),
-            from.to_string(),
-        );
+        direction = which_direction(gr.clone(), &nearest_idx, &stat_c.clone(), from.to_string());
 
         tracer!(&nearest_idx);
         tracer!(&direction);
@@ -404,18 +300,13 @@ fn get_diff(a: u32, b: u32) -> u32 {
 }
 
 pub fn try_pick_package(
-    pkg: &mut Package,
     tr_c: &mut TrainCollection,
-    nearest: &usize,
     pkgc_2: PackageCollection,
     pkg_tracker: PackageTracker,
-    stat_c: &StationCollection,
-    from: &String,
     timeline: &mut Timeline,
     stats_collection: &StationCollection,
     indexx: usize,
     direction: String,
-    curr_station: String,
 ) {
     let mut candidate_train: Option<Train> = None;
     let mut min_distance: u32 = u32::MAX;
@@ -423,23 +314,12 @@ pub fn try_pick_package(
     {
         let train = tr_c.get_train_mut(indexx).unwrap();
 
-        // traced!(&from);
-        // traced!(&direction);
-        // traced!(&curr_station);
-        // traced!(&pkg.from());
         for pkg_ in pkgc_2.iter() {
             if pkg_tracker.get_status(&pkg_).unwrap() == PackageStatus::AwaitingPickup
                 && *pkg_.from() == direction
             {
                 let pkg_pos = pkg_.from();
 
-                // traced!(&pkg_);
-                // let mut candidate_train: Option<Train> = None;
-                // let mut min_distance: u32 = u32::MAX;
-
-                // tracer!(&train);
-                // tracer!(&pkg_);
-                // process::exit(1);
                 if train.capacity() < pkg_.weight() {
                     continue;
                 }
@@ -468,15 +348,6 @@ pub fn try_pick_package(
                     min_distance = diff;
                 }
 
-                // tracer!(&pkg_pos);
-                // tracer!(&tr_pos);
-                // tracer!(&pkg_);
-                // tracer!(&traveled_less);
-                // tracer!(&diff);
-                // tracer!(&current_candidate_name);
-                // process::exit(1);
-                // }
-
                 if let Some(ref train) = candidate_train {
                     target_pkg = pkg_.clone();
                     tracer!(&train.name());
@@ -491,7 +362,6 @@ pub fn try_pick_package(
 
             tracer!(&target_pkg);
             tracer!(&train);
-            // traced!(&tr_c);
         }
     }
 }
@@ -613,7 +483,6 @@ impl PackageTracker {
 pub enum PackageStatus {
     InTransit,
     Delivered,
-    Pending,
     AwaitingPickup,
     Dummy,
 }
@@ -877,7 +746,7 @@ impl TrainCollection {
     pub fn current_locations(&self) -> Vec<String> {
         self.trains
             .iter()
-            .map(|train| train.current.clone()) // Collect the current location of each train
+            .map(|train| train.current.clone())
             .collect()
     }
 
@@ -1010,17 +879,17 @@ impl StationCollection {
         }
     }
 
-    // Method to get an iterator over the station collection
+    // Get an iterator over the station collection
     pub fn iter(&self) -> std::collections::btree_map::Iter<'_, usize, String> {
         self.stations.iter()
     }
 
-    // Optional: Method to get an iterator over the station names only
+    // Get an iterator over the station names only
     pub fn names(&self) -> impl Iterator<Item = &String> {
         self.stations.values()
     }
 
-    // Method to return Vec<usize> of indices corresponding to the provided train names
+    // Return Vec<usize> of indices corresponding to the provided train names
     pub fn indices_of_trains(&self, train_names: Vec<String>) -> Vec<usize> {
         train_names
             .iter()

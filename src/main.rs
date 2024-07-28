@@ -100,7 +100,7 @@ pub fn start_searching(
                             .update_status(&pkg, PackageStatus::InTransit)
                             .unwrap();
 
-                        tracer!(&pkg_tracker);
+                        // traced!(&pkg_tracker);
                         tracer!(&tr_c);
 
                         // process::exit(1);
@@ -218,7 +218,7 @@ pub fn move_train(
     pkg: &mut Package,
     gr: Graph,
     pkg_c_2: PackageCollection,
-    pkg_tracker: PackageTracker,
+    mut pkg_tracker: PackageTracker,
     loggerize: &mut Logger,
     tr_m: &mut TrainMovement,
     tl: &mut Timeline,
@@ -244,12 +244,12 @@ pub fn move_train(
         }
     }
 
-    let mut picked: Vec<Package> = Vec::new();
-    let mut dummy_picked: Option<Vec<Package>> = Some(Vec::new());
-    let mut dropped: Vec<Package> = Vec::new();
-    let first_iter = true;
+    // let mut picked: Vec<Package> = Vec::new();
+    // let mut dropped: Vec<Package> = Vec::new();
 
     while from.clone() != *stat_c.get_station_name(nearest_idx).unwrap() {
+        // tr_m.with_picked_pkgs(picked.clone());
+
         let curr_station = stat_c.get_station_name(nearest_idx).unwrap();
         try_pick_package(
             pkg,
@@ -266,45 +266,43 @@ pub fn move_train(
             curr_station.to_string(),
         );
 
+        // TODO: Remove. Use `find_train_hold_this_pkg`
         // How to get train name?
         // Get station name => Get train origin aka station.
         let station_name = stat_c.get_station_name(nearest_idx).unwrap();
 
         tracer!(&station_name);
 
-        for tr in tr_c.iter_mut() {
-            if pkg_tracker.get_status(&pkg).unwrap() == PackageStatus::AwaitingPickup {
-                if *from == direction {
-                    for (_, pkg) in tr.packages.iter() {
-                        if !loggerize.already_add(pkg) {
-                            picked.push(pkg.clone());
-                            loggerize.push(pkg.clone());
-                        }
-                    }
-                }
-            }
+        let curr_train = tr_c.find_train_hold_this_pkg(&pkg.name()).unwrap();
 
-            if pkg_tracker.get_status(&pkg).unwrap() == PackageStatus::InTransit {
-                if *from == direction {
-                    for pkg_rc in tr.packages.iter() {
-                        dropped.push(pkg_rc.1.clone());
-                        // picked.push(pkg_rc.1.clone());
-                        // loggerize.push(pkg_rc.1.clone());
-                    }
-                }
+        // if pkg_tracker.get_status(&pkg).unwrap() == PackageStatus::AwaitingPickup {
+        if *pkg.from() == *station_name {
+            // if pkg_tracker.get_status(&pkg).unwrap() == PackageStatus::AwaitingPickup {
+            tr_m.with_picked_pkgs_btree(curr_train.packages.clone());
+            // traced!(&pkg.from());
+            // traced!(&direction);
+            // traced!(&station_name);
+
+            pkg_tracker
+                .update_status(&pkg, PackageStatus::InTransit)
+                .unwrap();
+            // }
+        }
+        // }
+
+        if pkg_tracker.get_status(&pkg).unwrap() == PackageStatus::InTransit {
+            if *pkg.to() == direction {
+                tr_m.with_drop_pkgs(curr_train.packages.clone());
             }
         }
-        tracer!(&dropped);
-        tracer!(&picked);
 
-        for p in picked.iter_mut() {
-            tr_c.push_train_carriage(&station_name, p);
-        }
+        // traced!(&pkg_tracker);
+        // tracer!(&picked);
 
         tr_m.with_time(tl.get_time(&station_name));
         tr_m.with_from(station_name.to_string());
         tr_m.with_to(direction.clone());
-        tr_m.with_drop_pkgs(dropped.clone());
+        // tr_m.with_drop_pkgs(dropped.clone());
 
         let distance = dist_m.get_distance(station_name.to_string(), direction.clone());
         let numerize = distance.parse::<u32>().unwrap();
@@ -323,26 +321,40 @@ pub fn move_train(
         tr_.update_current_index(direction.clone());
         tr_m.with_train(tr_.name().to_string());
         tr_m.plus_time(tl.get_time(&tr_.name()));
-        tr_m.with_picked_pkgs(picked.clone());
+        // tr_m.with_picked_pkgs(picked.clone());
 
-        if pkg.from() == station_name {
-            tr_m.with_picked_pkgs(picked.clone());
-            println!("\x1b[0;33m{}\x1b[0m", &tr_m);
-        } else {
-            println!("\x1b[0;33m{}\x1b[0m", &tr_m);
-        }
+        // traced!(&picked);
+        // if pkg.from() == station_name {
+        //     // tr_m.with_picked_pkgs(picked.clone());
+        //     println!("\x1b[0;33m{}\x1b[0m", &tr_m);
+        // } else {
+        //     println!("\x1b[0;33m{}\x1b[0m", &tr_m);
+        // }
+        // if first_iter == 0 {
+        //     tr_m.with_picked_pkgs(Vec::new());
+        //     first_iter += 1;
+        // } else if first_iter == 1 {
+        //     tr_m.with_picked_pkgs(picked.clone());
+        //     traced!(&picked);
+        //     // process::exit(1);
+        // }
 
-        traced!(&pkg);
-        traced!(&station_name);
+        // traced!(&pkg);
+        // traced!(&station_name);
 
-        if tr_m.train == "Q2" {
-            traced!(&tr_m);
-            process::exit(1);
-        }
+        // if tr_m.train == "Q2" {
+        //     traced!(&tr_m);
+        //     process::exit(1);
+        // }
 
         // Our output
-        // tracer!(&tr_m);
-        // println!("\x1b[0;33m{}\x1b[0m", &tr_m);
+        tracer!(&tr_m);
+        println!("\x1b[0;33m{}\x1b[0m", &tr_m);
+
+        // tr_m.with_picked_pkgs(picked.clone());
+        // for p in picked.iter_mut() {
+        //     tr_c.push_train_carriage(&station_name, p);
+        // }
 
         // We want the output late in printing time
         tl.accumulate_time(&tr_.name(), numerize);
@@ -411,14 +423,17 @@ pub fn try_pick_package(
     {
         let train = tr_c.get_train_mut(indexx).unwrap();
 
-        tracer!(&from);
-        tracer!(&direction);
+        // traced!(&from);
+        // traced!(&direction);
+        // traced!(&curr_station);
+        // traced!(&pkg.from());
         for pkg_ in pkgc_2.iter() {
             if pkg_tracker.get_status(&pkg_).unwrap() == PackageStatus::AwaitingPickup
                 && *pkg_.from() == direction
             {
                 let pkg_pos = pkg_.from();
 
+                // traced!(&pkg_);
                 // let mut candidate_train: Option<Train> = None;
                 // let mut min_distance: u32 = u32::MAX;
 
@@ -476,7 +491,7 @@ pub fn try_pick_package(
 
             tracer!(&target_pkg);
             tracer!(&train);
-            tracer!(&tr_c);
+            // traced!(&tr_c);
         }
     }
 }
@@ -1295,10 +1310,17 @@ impl TrainMovement {
         }
     }
 
-    pub fn with_drop_pkgs(&mut self, drop: Vec<Package>) {
-        for pkg in drop {
-            self.drop_pkgs.insert(pkg.name.clone(), pkg.clone());
-            self.carriages.remove(&pkg.name);
+    pub fn with_picked_pkgs_btree(&mut self, picked: BTreeMap<String, Package>) {
+        for (name, pkg) in picked {
+            self.picked_pkgs.insert(name.clone(), pkg.clone());
+            self.carriages.insert(name, pkg);
+        }
+    }
+
+    pub fn with_drop_pkgs(&mut self, drop: BTreeMap<String, Package>) {
+        for (name, pkg) in drop {
+            self.drop_pkgs.insert(name.clone(), pkg.clone());
+            self.carriages.remove(&name);
         }
     }
 

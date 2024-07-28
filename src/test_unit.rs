@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod test {
+mod unit_test {
     use crate::*;
 
     #[test]
@@ -63,7 +63,7 @@ mod tests_find_nearest {
         let package_index = 5;
         let train_indices = vec![2, 5, 8];
         let result = find_nearest_trains(package_index, &train_indices);
-        assert_eq!(result, vec![5]); // Train at index 5 is closest
+        assert_eq!(result, vec![5]);
     }
 
     #[test]
@@ -71,7 +71,7 @@ mod tests_find_nearest {
         let package_index = 10;
         let train_indices = vec![8, 10, 12];
         let result = find_nearest_trains(package_index, &train_indices);
-        assert_eq!(result, vec![10]); // Train at index 10 is the closest
+        assert_eq!(result, vec![10]);
     }
 
     #[test]
@@ -79,7 +79,7 @@ mod tests_find_nearest {
         let package_index = 5;
         let train_indices = vec![3, 7];
         let result = find_nearest_trains(package_index, &train_indices);
-        assert_eq!(result, vec![3, 7]); // Both are at the same minimal distance of 2
+        assert_eq!(result, vec![3, 7]);
     }
 
     #[test]
@@ -87,7 +87,7 @@ mod tests_find_nearest {
         let package_index = 3;
         let train_indices = vec![5];
         let result = find_nearest_trains(package_index, &train_indices);
-        assert_eq!(result, vec![5]); // Only one train, so return it
+        assert_eq!(result, vec![5]);
     }
 
     #[test]
@@ -95,7 +95,7 @@ mod tests_find_nearest {
         let package_index = 10;
         let train_indices: Vec<usize> = Vec::new();
         let result = find_nearest_trains(package_index, &train_indices);
-        assert_eq!(result, Vec::<usize>::new()); // No trains, so return empty vector
+        assert_eq!(result, Vec::<usize>::new());
     }
 
     #[test]
@@ -103,14 +103,6 @@ mod tests_find_nearest {
         let package_index = 0;
         let train_indices = vec![0, 10, 20];
         let result = find_nearest_trains(package_index, &train_indices);
-        assert_eq!(result, vec![0]); // Train at index 0 is the closest
+        assert_eq!(result, vec![0]);
     }
-
-    // #[test]
-    // fn test_find_nearest_trains_large_package_index() {
-    //     let package_index = 100;
-    //     let train_indices = vec![90, 110, 120];
-    //     let result = find_nearest_trains(package_index, &train_indices);
-    //     assert_eq!(result, vec![110]); // Train at index 110 is closest
-    // }
 }

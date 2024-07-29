@@ -38,10 +38,17 @@ pub fn start_searching(
 
                 // TODO: Use `get_nearest_train_to_pkg`
                 // Get nearest train to the package
+                // If there's more than one nearest indices to package,
+                // pick the less travel time
                 let nearest_indices = find_nearest_trains(
                     stats_collection.get_station_index(package.from()).unwrap(),
                     &tr_indices,
                 );
+
+                // tracer!(&current_locations);
+                // tracer!(&tr_indices);
+                // tracer!(&nearest_indices);
+                // tracer!(&timeline);
 
                 // If package is same as train location
                 if let Some(nearest) = nearest_indices.first() {
@@ -183,13 +190,22 @@ pub fn advance_train(
     let mut current_idx = nearest.clone();
 
     // Get train's name at the nearest index
-    let train_name = stats_collection.get_station_name(current_idx).unwrap();
+    let station_name = stats_collection.get_station_name(current_idx).unwrap();
+
+    // tracer!(&station_name);
 
     // Find the index of the train with the matching name
+    // let train_index = tr_collection
+    //     .iter_mut()
+    //     .position(|tr| tr.current == *station_name)
+    //     .unwrap_or(0);
+
     let train_index = tr_collection
-        .iter_mut()
-        .position(|tr| tr.current == *train_name)
-        .unwrap_or(0);
+        .find_index_of_train_with_least_time(&station_name)
+        .unwrap();
+
+    // let train_index = tr_collection
+    // .iter_mut().position(|tr| tr.current == *station_name && tr.time is lesser than the rest)
 
     // Using where_to mean we need to calculate early for package.to(), otherwise
     // we wont reach package.to()
@@ -214,9 +230,9 @@ pub fn advance_train(
         if let Some(curr_train) = tr_collection.find_train_hold_this_pkg(&package.name()) {
             for (_, loaded_pkg) in curr_train.packages.clone() {
                 // If package location is same as current station
-                if *loaded_pkg.from() == *curr_station && !loggerize.already_add(&loaded_pkg) {
+                if *loaded_pkg.from() == *curr_station && !loggerize.already_picked(&loaded_pkg) {
                     tr_movement.with_picked_pkage_btree(loaded_pkg.clone());
-                    loggerize.push(loaded_pkg.clone());
+                    loggerize.push_picked(loaded_pkg.clone());
                     pkg_tracker
                         .update_status(&loaded_pkg, PackageStatus::InTransit)
                         .unwrap();
@@ -226,8 +242,10 @@ pub fn advance_train(
                     // If package destination same as next iteration.
                     // We check this early because there is no ways next iteration to happen
                     // because of our while loop condition.
-                    if *loaded_pkg.to() == next_station {
-                        tr_movement.with_drop_pkage_btree(loaded_pkg);
+                    if *loaded_pkg.to() == next_station && !loggerize.already_dropped(&loaded_pkg) {
+                        tr_movement.with_drop_pkage_btree(loaded_pkg.clone());
+                        loggerize.push_dropped(loaded_pkg.clone());
+                        curr_train.remove_package(&loaded_pkg);
                     }
                 }
             }
@@ -240,19 +258,29 @@ pub fn advance_train(
         tr_movement.with_from(curr_station.to_string());
         tr_movement.with_to(next_station.clone());
 
+        // tracer!(&tr_collection.clone());
+
         // Modify current train that hold current package or advance to package location
         let current_train = tr_collection.get_train_mut(train_index).unwrap();
+
+        // tracer!(&tr_collection);
+        // tracer!(&train_index);
+        // tracer!(&current_train);
+
         current_train.update_current_index(next_station.clone());
+        // current_train.accumulate_time()
         tr_movement.with_train(current_train.name().to_string());
         tr_movement.plus_time(timeline.get_time(&current_train.name()));
 
         // Accumulate timeline
         let distance = dist_map.get_distance(curr_station.to_string(), next_station.clone());
         let numerize_distance = distance.parse::<u32>().unwrap();
+        current_train.accumulate_time(numerize_distance);
+
+        // TODO: Remove
         timeline.accumulate_time(&current_train.name(), numerize_distance);
 
         println!("\x1b[0;33m{}\x1b[0m", &tr_movement);
-        // tracer!(&tr_collection);
 
         // Reassign to closing gap between train's index and where_to
         current_idx = next_index.unwrap();
@@ -298,22 +326,32 @@ pub fn try_pick_package(
 
 #[derive(Debug)]
 pub struct Logger {
-    log: BTreeMap<String, Package>,
+    picked: BTreeMap<String, Package>,
+    dropped: BTreeMap<String, Package>,
 }
 
 impl Logger {
     pub fn new() -> Self {
         Self {
-            log: BTreeMap::new(),
+            picked: BTreeMap::new(),
+            dropped: BTreeMap::new(),
         }
     }
 
-    pub fn already_add(&self, pkg: &Package) -> bool {
-        self.log.contains_key(&pkg.name)
+    pub fn already_picked(&self, pkg: &Package) -> bool {
+        self.picked.contains_key(&pkg.name)
     }
 
-    pub fn push(&mut self, pkg: Package) {
-        self.log.insert(pkg.name.clone(), pkg);
+    pub fn push_picked(&mut self, pkg: Package) {
+        self.picked.insert(pkg.name.clone(), pkg);
+    }
+
+    pub fn already_dropped(&self, pkg: &Package) -> bool {
+        self.dropped.contains_key(&pkg.name)
+    }
+
+    pub fn push_dropped(&mut self, pkg: Package) {
+        self.dropped.insert(pkg.name.clone(), pkg);
     }
 }
 
@@ -611,9 +649,12 @@ impl Train {
 
     /// Remove a package from the train.
     pub fn remove_package(&mut self, package: &Package) {
-        if self.packages.remove(&package.name).is_some() {
-            self.remain_capacity += package.weight;
-        }
+        self.packages
+            .remove(&package.name)
+            .expect("Package didn't exist");
+        // if self.packages.remove(&package.name).is_some() {
+        // self.remain_capacity += package.weight;
+        // }
     }
 
     /// Update the current index of the train.
@@ -627,7 +668,7 @@ impl Train {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TrainCollection {
     trains: Vec<Train>,
 }
@@ -657,6 +698,42 @@ impl TrainCollection {
             time,
         );
         self.trains.push(train);
+    }
+
+    pub fn find_index_of_train_with_least_time(&mut self, station_name: &str) -> Option<usize> {
+        // Find all indices of trains at the given station
+        let filtered_trains: Vec<usize> = self
+            .trains
+            .iter()
+            .enumerate()
+            .filter_map(|(index, train)| {
+                if train.current == station_name {
+                    Some(index)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // If no trains found at the station, return None
+        if filtered_trains.is_empty() {
+            return None;
+        }
+
+        // Find the index of the train with the least time
+        filtered_trains
+            .into_iter()
+            .min_by_key(|&index| self.trains[index].time)
+    }
+
+    pub fn find_train_by_station_and_least_time(
+        &mut self,
+        station_name: &str,
+    ) -> Option<&mut Train> {
+        self.trains
+            .iter_mut()
+            .filter(|train| train.current == station_name)
+            .min_by_key(|train| train.time)
     }
 
     pub fn get_train(&self, index: usize) -> Option<&Train> {
@@ -1053,6 +1130,10 @@ impl Timeline {
         if self.times.contains_key(train) {
             self.times.insert(train.to_string(), new_time);
         }
+    }
+
+    pub fn find_least_timeline(&self) -> Option<(&String, &u32)> {
+        self.times.iter().min_by_key(|entry| entry.1)
     }
 
     pub fn accumulate_time(&mut self, train: &str, additional_time: u32) {

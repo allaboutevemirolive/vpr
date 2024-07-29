@@ -26,7 +26,7 @@ pub fn start_searching(
     loggerize: &mut Logger,
 ) {
     while !pkg_collection.is_empty() {
-        if let Some((key, package)) = pkg_collection.first() {
+        if let Some((_, package)) = pkg_collection.first() {
             // tracer!("First package key: {}, value: {:?}", key, package);
 
             if pkg_tracker.get_status(&package).unwrap() == PackageStatus::AwaitingPickup {
@@ -71,6 +71,7 @@ pub fn start_searching(
                             timeline,
                             dist_map,
                             &package.from(), // Pass packagae location
+                            loggerize,
                         );
                     }
                 }
@@ -99,6 +100,7 @@ pub fn start_searching(
                     timeline,
                     dist_map,
                     &package.to(), // Passed package destination
+                    loggerize,
                 );
 
                 // Mark package as delivered
@@ -165,6 +167,7 @@ pub fn advance_train(
     timeline: &mut Timeline,
     dist_map: &mut DistanceMap,
     where_to: &String,
+    loggerize: &mut Logger,
 ) {
     // Next postion: Left or Right?
     // A   <-   B(current)   ->   C
@@ -209,43 +212,26 @@ pub fn advance_train(
         // Since we already pick the same package, there is no current package in
         // tr_collection
         if let Some(curr_train) = tr_collection.find_train_hold_this_pkg(&package.name()) {
-            // If package location is same as current station
-            if *package.from() == *curr_station {
-                tr_movement.with_picked_pkgs_btree(curr_train.packages.clone());
-                pkg_tracker
-                    .update_status(&package, PackageStatus::InTransit)
-                    .unwrap();
-            }
+            for (_, loaded_pkg) in curr_train.packages.clone() {
+                // If package location is same as current station
+                if *loaded_pkg.from() == *curr_station && !loggerize.already_add(&loaded_pkg) {
+                    tr_movement.with_picked_pkage_btree(loaded_pkg.clone());
+                    loggerize.push(loaded_pkg.clone());
+                    pkg_tracker
+                        .update_status(&loaded_pkg, PackageStatus::InTransit)
+                        .unwrap();
+                }
 
-            if pkg_tracker.get_status(&package).unwrap() == PackageStatus::InTransit {
-                // If package destination same as next iteration.
-                // We check this early because there is no ways next iteration to happen
-                // because of our while loop condition.
-                if *package.to() == next_station {
-                    tr_movement.with_drop_pkgs(curr_train.packages.clone());
+                if pkg_tracker.get_status(&loaded_pkg).unwrap() == PackageStatus::InTransit {
+                    // If package destination same as next iteration.
+                    // We check this early because there is no ways next iteration to happen
+                    // because of our while loop condition.
+                    if *loaded_pkg.to() == next_station {
+                        tr_movement.with_drop_pkage_btree(loaded_pkg);
+                    }
                 }
             }
         }
-
-        // // Get current station as we closing gap to package's location or destination
-        // let curr_station = stats_collection.get_station_name(current_idx).unwrap();
-
-        // // If package location is same as current station
-        // if *package.from() == *curr_station {
-        //     tr_movement.with_picked_pkgs_btree(curr_train.packages.clone());
-        //     pkg_tracker
-        //         .update_status(&package, PackageStatus::InTransit)
-        //         .unwrap();
-        // }
-
-        // if pkg_tracker.get_status(&package).unwrap() == PackageStatus::InTransit {
-        //     // If package destination same as next iteration.
-        //     // We check this early because there is no ways next iteration to happen
-        //     // because of our while loop condition.
-        //     if *package.to() == next_station {
-        //         tr_movement.with_drop_pkgs(curr_train.packages.clone());
-        //     }
-        // }
 
         // let curr_index = stats_collection.get_station_index(&curr_station);
         let next_index = stats_collection.get_station_index(&next_station);
@@ -266,6 +252,7 @@ pub fn advance_train(
         timeline.accumulate_time(&current_train.name(), numerize_distance);
 
         println!("\x1b[0;33m{}\x1b[0m", &tr_movement);
+        // tracer!(&tr_collection);
 
         // Reassign to closing gap between train's index and where_to
         current_idx = next_index.unwrap();
@@ -307,8 +294,6 @@ pub fn try_pick_package(
             continue;
         }
     }
-
-    // tracer!(&tr_collection);
 }
 
 #[derive(Debug)]
@@ -1107,22 +1092,18 @@ impl fmt::Display for TrainMovement {
         write!(f, "N1={}", self.from)?;
         write!(f, ", ")?;
 
-        let p1 = self
-            .picked_pkgs
-            .iter()
-            .next()
-            .map_or("", |(_, pkg)| pkg.name());
-        write!(f, "P1=[{}]", p1)?;
+        let picked_keys: Vec<String> = self.picked_pkgs.keys().cloned().collect();
+        let picked = picked_keys.join(", ");
+
+        write!(f, "P1=[{}]", picked)?;
         write!(f, ", ")?;
         write!(f, "N2={}", self.to)?;
         write!(f, ", ")?;
 
-        let p2 = self
-            .drop_pkgs
-            .iter()
-            .next()
-            .map_or("", |(_, pkg)| pkg.name());
-        write!(f, "P2=[{}]", p2)?;
+        let dropped_keys: Vec<String> = self.drop_pkgs.keys().cloned().collect();
+        let dropped = dropped_keys.join(", ");
+
+        write!(f, "P2=[{}]", dropped)?;
 
         Ok(())
     }
@@ -1173,6 +1154,18 @@ impl TrainMovement {
             self.picked_pkgs.insert(name.clone(), pkg.clone());
             self.carriages.insert(name, pkg);
         }
+    }
+
+    pub fn with_picked_pkage_btree(&mut self, picked: Package) {
+        self.picked_pkgs
+            .insert(picked.name().to_string(), picked.clone());
+        self.carriages.insert(picked.name().to_string(), picked);
+    }
+
+    pub fn with_drop_pkage_btree(&mut self, picked: Package) {
+        self.drop_pkgs
+            .insert(picked.name().to_string(), picked.clone());
+        self.carriages.remove(picked.name());
     }
 
     pub fn with_drop_pkgs(&mut self, drop: BTreeMap<String, Package>) {

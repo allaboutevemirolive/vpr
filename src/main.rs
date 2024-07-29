@@ -15,119 +15,102 @@ fn main() {
 }
 
 pub fn start_searching(
-    mut pkg_c: PackageCollection,
-    pkg_c_2: PackageCollection,
-    tr_c: &mut TrainCollection,
-    stat_c: StationCollection,
-    gr: Graph,
-    tr_m: &mut TrainMovement,
-    dist_m: &mut DistanceMap,
-    tl: &mut Timeline,
+    pkg_collection: &mut PackageCollection,
+    tr_collection: &mut TrainCollection,
+    stats_collection: &StationCollection,
+    graph: Graph,
+    tr_movement: &mut TrainMovement,
+    dist_map: &mut DistanceMap,
+    timeline: &mut Timeline,
     mut pkg_tracker: PackageTracker,
-    mut loggerize: Logger,
+    loggerize: &mut Logger,
 ) {
-    for pkg in pkg_c.iter_mut() {
-        tracer!(&pkg);
+    while !pkg_collection.is_empty() {
+        if let Some((key, package)) = pkg_collection.pick_first() {
+            tracer!("First package key: {}, value: {:?}", key, package);
 
-        while pkg_tracker.get_status(&pkg).unwrap() != PackageStatus::Delivered {
-            if pkg_tracker.get_status(&pkg).unwrap() == PackageStatus::AwaitingPickup {
-                // Store the result of current_locations in a variable with a longer lifetime
-                let current_locations = tr_c.current_locations();
+            if pkg_tracker.get_status(&package).unwrap() == PackageStatus::AwaitingPickup {
+                // Accumulate realtime location "A, B, C, D..."
+                let current_locations = tr_collection.current_locations();
 
-                // Get the train indices from the station collection
-                let tr_indices = stat_c.indices_of_trains(current_locations.clone());
+                // Convert train location to index: "A, B, C, D..." => "0, 1, 2, 3..."
+                let tr_indices = stats_collection.indices_of_trains(current_locations.clone());
 
-                // Get pkg.from()
-                let nearest_indices =
-                    find_nearest_trains(stat_c.get_station_index(pkg.from()).unwrap(), &tr_indices);
+                // TODO: Use `get_nearest_train_to_pkg`
+                // Get nearest train to the package
+                let nearest_indices = find_nearest_trains(
+                    stats_collection.get_station_index(package.from()).unwrap(),
+                    &tr_indices,
+                );
 
-                tracer!(&nearest_indices);
-                tracer!(&current_locations);
-                tracer!(&tr_indices);
-                tracer!(&nearest_indices);
-
+                // If package is same as train location
                 if let Some(nearest) = nearest_indices.first() {
-                    let station_name = stat_c.get_station_name(*nearest).unwrap();
-                    tracer!(&station_name);
+                    // if the package.from() matches the nearest station
+                    if package.from() == stats_collection.get_station_name(*nearest).unwrap() {
+                        // Convert nearest index to station's name (station's name is package's index)
+                        let station_name = stats_collection.get_station_name(*nearest).unwrap();
 
-                    // Check if the package's 'from' location matches the nearest station
-                    if pkg.from() == stat_c.get_station_name(*nearest).unwrap() {
-                        // How to get initial postion of train
-                        let station_name = stat_c.get_station_name(*nearest).unwrap();
+                        // Push station's name and package to current train's carriage
+                        tr_collection.push_train_carriage(station_name, &package);
 
-                        // Package same as train index
-                        tr_c.push_train_carriage(station_name, pkg);
-
-                        tracer!(&station_name);
-                        tracer!(nearest);
-                        tracer!(&pkg);
-                        tracer!(&tr_c);
-                    } else {
-                        let from = pkg.from().clone();
-
-                        // Package not same as train index
-                        move_train(
-                            &stat_c.clone(),
-                            tr_c,
-                            nearest,
-                            pkg,
-                            gr.clone(),
-                            pkg_c_2.clone(),
-                            pkg_tracker.clone(),
-                            &mut loggerize,
-                            tr_m,
-                            tl,
-                            dist_m,
-                            &from,
-                        );
-
-                        let station_name = stat_c.get_station_name(*nearest).unwrap();
-
+                        // Mark package as InTransit
                         pkg_tracker
-                            .update_status(&pkg, PackageStatus::InTransit)
+                            .update_status(&package, PackageStatus::InTransit)
                             .unwrap();
-
-                        tracer!(&station_name);
-                        tracer!(&nearest);
-                        tracer!(&tr_c);
+                    } else {
+                        //  If package is not same as train location, move train to package.from()
+                        advance_train(
+                            &stats_collection.clone(),
+                            tr_collection,
+                            nearest, // Pass nearest train to our package
+                            &mut package.clone(),
+                            graph.clone(),
+                            pkg_collection,
+                            pkg_tracker.clone(),
+                            loggerize,
+                            tr_movement,
+                            timeline,
+                            dist_map,
+                            &package.from(), // Pass packagae location
+                        );
                     }
                 }
             }
 
-            if pkg_tracker.get_status(&pkg).unwrap() == PackageStatus::InTransit {
-                // Get destination position
-                let from = pkg.to().clone();
+            if pkg_tracker.get_status(&package).unwrap() == PackageStatus::InTransit {
+                // Get real time current train index that hold our current package
+                let curr_train = tr_collection
+                    .find_train_hold_this_pkg(&package.name())
+                    .unwrap();
 
-                // Get current train index that hold our current package
-                let curr_train = tr_c.find_train_hold_this_pkg(&pkg.name()).unwrap();
-                tracer!(&curr_train);
-                tracer!(&stat_c);
-
-                let current_index = stat_c
+                // Get real time train's index
+                let current_index = stats_collection
                     .get_station_index(curr_train.current_index())
                     .unwrap();
 
-                move_train(
-                    &stat_c.clone(),
-                    tr_c,
-                    &current_index,
-                    pkg,
-                    gr.clone(),
-                    pkg_c_2.clone(),
+                advance_train(
+                    &stats_collection.clone(),
+                    tr_collection,
+                    &current_index, // Pass real time train index that hold current package
+                    &mut package.clone(),
+                    graph.clone(),
+                    pkg_collection,
                     pkg_tracker.clone(),
-                    &mut loggerize,
-                    tr_m,
-                    tl,
-                    dist_m,
-                    &from,
+                    loggerize,
+                    tr_movement,
+                    timeline,
+                    dist_map,
+                    &package.to(), // Passed package destination
                 );
 
+                // Mark package as delivered
                 pkg_tracker
-                    .update_status(&pkg, PackageStatus::Delivered)
+                    .update_status(&package, PackageStatus::Delivered)
                     .unwrap();
             }
-
-            tracer!(&pkg_tracker);
+        } else {
+            tracer!("No packages in the collection.");
+            break;
         }
     }
 }
@@ -170,126 +153,114 @@ pub fn which_direction(
     left
 }
 
-pub fn move_train(
-    stat_c: &StationCollection,
-    tr_c: &mut TrainCollection,
+pub fn advance_train(
+    stats_collection: &StationCollection,
+    tr_collection: &mut TrainCollection,
     nearest: &usize,
-    pkg: &mut Package,
-    gr: Graph,
-    pkg_c_2: PackageCollection,
+    package: &mut Package,
+    graph: Graph,
+    pkg_collection: &mut PackageCollection,
     mut pkg_tracker: PackageTracker,
     loggerize: &mut Logger,
-    tr_m: &mut TrainMovement,
-    tl: &mut Timeline,
-    dist_m: &mut DistanceMap,
-    from: &String,
+    tr_movement: &mut TrainMovement,
+    timeline: &mut Timeline,
+    dist_map: &mut DistanceMap,
+    where_to: &String,
 ) {
     // Next postion: Left or Right?
-    let mut direction = which_direction(gr.clone(), nearest, &stat_c.clone(), from.clone());
-    tracer!(&direction);
+    // A   <-   B(current)   ->   C
+    let mut next_station = which_direction(
+        graph.clone(),
+        nearest,
+        &stats_collection.clone(),
+        where_to.clone(),
+    );
 
-    let mut nearest_idx = nearest.clone();
-    let train_idx = &stat_c.get_station_name(nearest_idx).unwrap();
-    let mut tr_idx = 0;
+    // Increment.
+    // We use this to closing the gap to package location or package destination
+    let mut current_idx = nearest.clone();
 
-    for (idx, tr) in tr_c.iter_mut().enumerate() {
-        // How to get train on specific index and modify it?
-        if tr.current == **train_idx {
-            tr_idx = idx;
-            break;
-        }
-    }
+    // Get train's name at the nearest index
+    let train_name = stats_collection.get_station_name(current_idx).unwrap();
 
-    while from.clone() != *stat_c.get_station_name(nearest_idx).unwrap() {
+    // Find the index of the train with the matching name
+    let train_index = tr_collection
+        .iter_mut()
+        .position(|tr| tr.current == *train_name)
+        .unwrap_or(0);
+
+    while where_to.clone() != *stats_collection.get_station_name(current_idx).unwrap() {
+        // Try pick package at current train index while moving to where_to
         try_pick_package(
-            tr_c,
-            pkg_c_2.clone(),
+            tr_collection,
+            &mut pkg_collection.clone(),
             pkg_tracker.clone(),
-            tl,
-            stat_c,
-            tr_idx,
-            direction.clone(),
+            timeline,
+            stats_collection,
+            train_index,
+            next_station.clone(),
         );
 
-        // TODO: Remove. Use `find_train_hold_this_pkg`
-        // How to get train name?
-        // Get station name => Get train origin aka station.
-        let station_name = stat_c.get_station_name(nearest_idx).unwrap();
+        tracer!(&tr_collection);
+        tracer!(&package);
 
-        tracer!(&station_name);
+        let curr_train = tr_collection
+            .find_train_hold_this_pkg(&package.name())
+            .unwrap();
 
-        let curr_train = tr_c.find_train_hold_this_pkg(&pkg.name()).unwrap();
+        // Get current station as we closing gap to package's location or destination
+        let curr_station = stats_collection.get_station_name(current_idx).unwrap();
 
-        if *pkg.from() == *station_name {
-            tr_m.with_picked_pkgs_btree(curr_train.packages.clone());
+        // If package location is same as current station
+        if *package.from() == *curr_station {
+            tr_movement.with_picked_pkgs_btree(curr_train.packages.clone());
             pkg_tracker
-                .update_status(&pkg, PackageStatus::InTransit)
+                .update_status(&package, PackageStatus::InTransit)
                 .unwrap();
         }
 
-        if pkg_tracker.get_status(&pkg).unwrap() == PackageStatus::InTransit {
-            if *pkg.to() == direction {
-                tr_m.with_drop_pkgs(curr_train.packages.clone());
+        if pkg_tracker.get_status(&package).unwrap() == PackageStatus::InTransit {
+            // If package destination same as next iteration.
+            // We check this early because there is no ways next iteration to happen
+            // because of our while loop condition.
+            if *package.to() == next_station {
+                tr_movement.with_drop_pkgs(curr_train.packages.clone());
             }
         }
 
-        tr_m.with_time(tl.get_time(&station_name));
-        tr_m.with_from(station_name.to_string());
-        tr_m.with_to(direction.clone());
+        // let curr_index = stats_collection.get_station_index(&curr_station);
+        let next_index = stats_collection.get_station_index(&next_station);
 
-        let distance = dist_m.get_distance(station_name.to_string(), direction.clone());
-        let numerize = distance.parse::<u32>().unwrap();
-        let curr_name = stat_c.get_station_name(nearest_idx).unwrap();
-        let curr_idx = stat_c.get_station_index(&curr_name);
-        let near_idx = stat_c.get_station_index(&direction);
+        tr_movement.with_time(timeline.get_time(&curr_station));
+        tr_movement.with_from(curr_station.to_string());
+        tr_movement.with_to(next_station.clone());
 
-        tracer!(&curr_idx);
-        tracer!(&near_idx);
-        tracer!(&nearest_idx);
+        // Modify current train that hold current package or advance to package location
+        let current_train = tr_collection.get_train_mut(train_index).unwrap();
+        current_train.update_current_index(next_station.clone());
+        tr_movement.with_train(current_train.name().to_string());
+        tr_movement.plus_time(timeline.get_time(&current_train.name()));
 
-        tracer!(&tr_c);
-        tracer!(tr_idx);
+        // Accumulate timeline
+        let distance = dist_map.get_distance(curr_station.to_string(), next_station.clone());
+        let numerize_distance = distance.parse::<u32>().unwrap();
+        timeline.accumulate_time(&current_train.name(), numerize_distance);
 
-        let tr_ = tr_c.get_train_mut(tr_idx).unwrap();
-        tr_.update_current_index(direction.clone());
-        tr_m.with_train(tr_.name().to_string());
-        tr_m.plus_time(tl.get_time(&tr_.name()));
+        println!("\x1b[0;33m{}\x1b[0m", &tr_movement);
 
-        // Our output
-        tracer!(&tr_m);
-        println!("\x1b[0;33m{}\x1b[0m", &tr_m);
+        // Reassign to closing gap between train's index and where_to
+        current_idx = next_index.unwrap();
 
-        // We want the output late in printing time
-        tl.accumulate_time(&tr_.name(), numerize);
-        tr_m.plus_time(tl.get_time(&tr_.name()));
+        next_station = which_direction(
+            graph.clone(),
+            &current_idx,
+            &stats_collection.clone(),
+            where_to.to_string(),
+        );
 
-        tracer!(&tr_c);
-        tracer!(&tl);
-        tracer!(&loggerize);
-
-        tracer!(&train_idx);
-        tracer!(&station_name);
-        tracer!(&tr_c);
-
-        // Reassign to closing gap between train and pkg.to()
-        nearest_idx = near_idx.unwrap();
-
-        direction = which_direction(gr.clone(), &nearest_idx, &stat_c.clone(), from.to_string());
-
-        tracer!(&nearest_idx);
-        tracer!(&direction);
-        tracer!(&station_name);
-        tracer!(&tr_c);
-        tracer!(&stat_c);
-        tracer!(&from);
-        tracer!(stat_c.get_station_name(nearest_idx).unwrap());
-        tracer!(&direction);
-
-        // Cleaning after prin output
-        tr_m.picked_pkgs.clear();
-        tr_m.drop_pkgs.clear();
+        tr_movement.picked_pkgs.clear();
+        tr_movement.drop_pkgs.clear();
     }
-    tracer!(&tr_c);
 }
 
 fn get_diff(a: u32, b: u32) -> u32 {
@@ -301,27 +272,25 @@ fn get_diff(a: u32, b: u32) -> u32 {
 }
 
 pub fn try_pick_package(
-    tr_c: &mut TrainCollection,
-    pkgc_2: PackageCollection,
+    tr_collection: &mut TrainCollection,
+    pkg_collection: &mut PackageCollection,
     pkg_tracker: PackageTracker,
     timeline: &mut Timeline,
     stats_collection: &StationCollection,
-    indexx: usize,
-    direction: String,
+    train_index: usize,
+    next_station: String,
 ) {
     let mut candidate_train: Option<Train> = None;
     let mut min_distance: u32 = u32::MAX;
     let mut target_pkg = Package::default();
     {
-        let train = tr_c.get_train_mut(indexx).unwrap();
+        let train = tr_collection.get_train_mut(train_index).unwrap();
 
-        for pkg_ in pkgc_2.iter() {
-            if pkg_tracker.get_status(&pkg_).unwrap() == PackageStatus::AwaitingPickup
-                && *pkg_.from() == direction
-            {
-                let pkg_pos = pkg_.from();
+        for try_pkg in pkg_collection.iter() {
+            if *try_pkg.from() == next_station || *try_pkg.to() == next_station {
+                let pkg_pos = try_pkg.from();
 
-                if train.capacity() < pkg_.weight() {
+                if train.capacity() < try_pkg.weight() {
                     continue;
                 }
 
@@ -350,15 +319,15 @@ pub fn try_pick_package(
                 }
 
                 if let Some(ref train) = candidate_train {
-                    target_pkg = pkg_.clone();
+                    target_pkg = try_pkg.clone();
                     tracer!(&train.name());
-                    tracer!(&pkg_);
+                    tracer!(&try_pkg);
                 }
             }
         }
 
         if let Some(ref train) = candidate_train {
-            let target_tr = tr_c.find_train_by_name(&train.name()).unwrap();
+            let target_tr = tr_collection.find_train_by_name(&train.name()).unwrap();
             target_tr.push_pkg(target_pkg.clone());
 
             tracer!(&target_pkg);
@@ -785,8 +754,25 @@ impl PackageCollection {
         }
     }
 
+    pub fn first(&self) -> Option<(&String, &Package)> {
+        self.packages.iter().next()
+    }
+
     pub fn len(&self) -> usize {
         self.packages.len()
+    }
+
+    pub fn is_empty(&mut self) -> bool {
+        self.packages.is_empty()
+    }
+
+    /// Pick first items from vector and drop that item
+    pub fn pick_first(&mut self) -> Option<(String, Package)> {
+        if let Some(key) = self.packages.keys().next().cloned() {
+            self.packages.remove_entry(&key)
+        } else {
+            None
+        }
     }
 
     pub fn add_package(
@@ -851,6 +837,19 @@ impl StationCollection {
         })
     }
 
+    pub fn get_nearest_train_to_pkg(
+        &self,
+        pkg: &Package,
+        train_indices: &Vec<usize>,
+    ) -> Vec<usize> {
+        let pkg_index = self
+            .get_station_index(&pkg.from())
+            .expect("Cannot get pkg index");
+
+        let nearest_indices = find_nearest_trains(pkg_index, &train_indices);
+        nearest_indices
+    }
+
     pub fn remove_station(&mut self, name: &str) {
         // First, find the index to remove
         let index_to_remove = self.stations.iter().find_map(|(&idx, station_name)| {
@@ -890,7 +889,7 @@ impl StationCollection {
         self.stations.values()
     }
 
-    // Return Vec<usize> of indices corresponding to the provided train names
+    /// Return Vec<usize> of indices corresponding to the provided train names
     pub fn indices_of_trains(&self, train_names: Vec<String>) -> Vec<usize> {
         train_names
             .iter()

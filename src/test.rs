@@ -66,23 +66,6 @@ mod test_output {
             PackageStatus::AwaitingPickup,
         );
 
-        let mut package_collection_2 = PackageCollection::new();
-        package_collection_2.add_package(
-            "K1".to_string(),
-            48,
-            "D".to_string(),
-            "A".to_string(),
-            PackageStatus::AwaitingPickup,
-        );
-
-        package_collection_2.add_package(
-            "K2".to_string(),
-            38,
-            "E".to_string(),
-            "F".to_string(),
-            PackageStatus::AwaitingPickup,
-        );
-
         let mut train_collection = TrainCollection::new();
         train_collection.add_train(
             "Q1".to_string(),
@@ -121,7 +104,7 @@ mod test_output {
         graph.init_value(&edge_storage);
 
         let mut distance_map = DistanceMap::new();
-        distance_map.init_key_value(graph.clone(), edge_storage);
+        distance_map.init_key_value(graph.clone(), edge_storage.clone());
 
         let mut timeline = Timeline::new();
         for tr in train_collection.iter_mut() {
@@ -144,8 +127,16 @@ mod test_output {
         let mut loggerize = Logger::new();
 
         // tracer!(&graph);
-        // tracer!(&train_collection);
-        // tracer!(&station_collection);
+        println!();
+        println!("Input: ");
+        println!();
+        println!("{}", &station_collection);
+        println!("{}", &edge_storage.clone());
+        println!("{}", &package_collection);
+        println!("{}", &train_collection);
+        println!();
+        println!("Output: ");
+        println!();
 
         start_searching(
             &mut package_collection,
@@ -158,6 +149,7 @@ mod test_output {
             package_tracker,
             &mut loggerize,
         );
+        println!();
     }
 
     // Input:
@@ -236,7 +228,7 @@ mod test_output {
         graph.init_value(&edge_storage);
 
         let mut distance_map = DistanceMap::new();
-        distance_map.init_key_value(graph.clone(), edge_storage);
+        distance_map.init_key_value(graph.clone(), edge_storage.clone());
 
         let mut timeline = Timeline::new();
         for tr in train_collection.iter_mut() {
@@ -258,6 +250,17 @@ mod test_output {
 
         let mut loggerize = Logger::new();
 
+        println!();
+        println!("Input: ");
+        println!();
+        println!("{}", &station_collection);
+        println!("{}", &edge_storage.clone());
+        println!("{}", &package_collection);
+        println!("{}", &train_collection);
+        println!();
+        println!("Output: ");
+        println!();
+
         start_searching(
             &mut package_collection,
             &mut train_collection,
@@ -269,6 +272,7 @@ mod test_output {
             package_tracker,
             &mut loggerize,
         );
+        println!();
     }
 
     // Input:
@@ -419,7 +423,7 @@ mod test_output {
         graph.init_value(&edge_storage);
 
         let mut distance_map = DistanceMap::new();
-        distance_map.init_key_value(graph.clone(), edge_storage);
+        distance_map.init_key_value(graph.clone(), edge_storage.clone());
 
         let mut timeline = Timeline::new();
         for tr in train_collection.iter_mut() {
@@ -445,6 +449,17 @@ mod test_output {
         // tracer!(&train_collection);
         // tracer!(&station_collection);
 
+        println!();
+        println!("Input: ");
+        println!();
+        println!("{}", &station_collection);
+        println!("{}", &edge_storage.clone());
+        println!("{}", &package_collection);
+        println!("{}", &train_collection);
+        println!();
+        println!("Output: ");
+        println!();
+
         start_searching(
             &mut package_collection,
             &mut train_collection,
@@ -456,5 +471,6 @@ mod test_output {
             package_tracker,
             &mut loggerize,
         );
+        println!();
     }
 }

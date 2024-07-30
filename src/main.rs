@@ -655,6 +655,23 @@ pub struct TrainCollection {
     trains: Vec<Train>,
 }
 
+impl fmt::Display for TrainCollection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Trains: ")?;
+
+        let mut train_strings: Vec<String> = Vec::new();
+
+        for train in &self.trains {
+            train_strings.push(format!(
+                "'{}',{},{}",
+                train.name, train.capacity, train.origin
+            ));
+        }
+
+        write!(f, "[{}]", train_strings.join("], ["))
+    }
+}
+
 impl TrainCollection {
     pub fn new() -> Self {
         Self { trains: Vec::new() }
@@ -784,7 +801,7 @@ impl TrainCollection {
         }
     }
 
-    /// Find train based on the origin
+    /// Find train based on the name
     pub fn find_train_by_name(&mut self, name: &str) -> Option<&mut Train> {
         self.trains.iter_mut().find(|train| train.name() == name)
     }
@@ -800,6 +817,23 @@ impl TrainCollection {
 #[derive(Debug, Clone)]
 pub struct PackageCollection {
     packages: BTreeMap<String, Package>,
+}
+
+impl fmt::Display for PackageCollection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut package_strings: Vec<String> = Vec::new();
+
+        write!(f, "Packages: ").unwrap();
+
+        for (_key, package) in &self.packages {
+            package_strings.push(format!(
+                "'{}',{},{},{}",
+                package.name, package.weight, package.from, package.to
+            ));
+        }
+
+        write!(f, "[{}]", package_strings.join("], ["))
+    }
 }
 
 impl PackageCollection {
@@ -878,6 +912,20 @@ impl PackageCollection {
 #[derive(Debug, Clone)]
 pub struct StationCollection {
     stations: BTreeMap<usize, String>,
+}
+
+impl fmt::Display for StationCollection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Stations: ")?;
+
+        let mut valuee: Vec<String> = Vec::new();
+
+        for (_key, value) in self.stations.iter() {
+            valuee.push(value.to_string());
+        }
+
+        write!(f, "{}", valuee.join(", "))
+    }
 }
 
 impl StationCollection {
@@ -1010,6 +1058,26 @@ impl Edge {
 #[derive(Clone)]
 pub struct EdgeStorage {
     edges: Vec<Edge>,
+}
+
+impl fmt::Display for EdgeStorage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut edge_strings: Vec<String> = Vec::new();
+
+        write!(f, "Edges: ").unwrap();
+
+        for edge in &self.edges {
+            edge_strings.push(format!(
+                "'{}',{},{},{}",
+                edge.name(),
+                edge.from(),
+                edge.to(),
+                edge.times()
+            ));
+        }
+
+        write!(f, "[{}]", edge_strings.join("], ["))
+    }
 }
 
 impl EdgeStorage {

@@ -276,6 +276,10 @@ pub fn advance_train(
     // tracer!(&where_to);
     // tracer!(stats_collection.get_station_name(current_idx).unwrap());
     while *where_to != *stats_collection.get_station_name(current_idx).unwrap() {
+        // tracer!(&train);
+        // tracer!(&train_index);
+        // tracer!(&tr_collection);
+
         // Try pick package at current train index while moving to where_to
         try_pick_package(
             tr_collection,
@@ -301,7 +305,7 @@ pub fn advance_train(
                 // If package location is same as current station
                 if *loaded_pkg.from() == *curr_station && !loggerize.already_picked(&loaded_pkg) {
                     tr_movement.with_picked_pkage_btree(loaded_pkg.clone());
-                    curr_train.remove_package(&loaded_pkg);
+                    // curr_train.remove_package(&loaded_pkg);
                     loggerize.push_picked(loaded_pkg.clone());
                     pkg_tracker
                         .update_status(&loaded_pkg, PackageStatus::InTransit)
@@ -399,6 +403,12 @@ pub fn try_pick_package(
             continue;
         }
     }
+
+    // tracer!("==========");
+
+    // tracer!(&train);
+    // tracer!(&train_index);
+    // tracer!(&tr_collection);
 }
 
 #[derive(Debug)]

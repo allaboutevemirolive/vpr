@@ -82,11 +82,12 @@ pub fn start_searching(
                 find_best_train(&mut dummy_tr_collection, package, stats_collection).unwrap();
 
             if pkg_tracker.get_status(&package).unwrap() == PackageStatus::AwaitingPickup {
-                tracer!(&candidate);
+                // tracer!(&candidate);
 
+                tracer!(&pkg_tracker);
                 // tracer!(&tr_collection);
                 // tracer!(&nearest);
-                tracer!(&package);
+                // tracer!(&package);
 
                 // If package is same as train location
                 // if let Some(nearest) = nearest_indices.first() {
@@ -123,42 +124,15 @@ pub fn start_searching(
             }
 
             if pkg_tracker.get_status(&package).unwrap() == PackageStatus::InTransit {
-                // // Get real time current train index that hold our current package
-                // let curr_train = tr_collection.find_closest_train(&package).unwrap();
+                // tracer!(&tr_collection);
 
-                // let mut current_index: usize = 0;
-
-                // if curr_train.remain_capacity() >= package.weight() {
-                //     //
-                //     let cands = tr_collection
-                //         .find_closest_train_less_weight(package, curr_train)
-                //         .unwrap();
-
-                //     current_index = stats_collection
-                //         .get_station_index(cands.current_index())
-                //         .unwrap();
-                // }
-
-                // // Get real time train's index
-                // current_index = stats_collection
-                //     .get_station_index(curr_train.current_index())
-                //     .unwrap();
-
-                // let trainee = tr_collection
-                //     .find_closest_train_with_constraint(package)
-                //     .unwrap();
-
-                // let current_index = stats_collection
-                //     .get_station_index(trainee.current_index())
-                //     .unwrap();
-
-                tracer!(&tr_collection);
-                // tracer!(&trainee);
-                // tracer!(&current_index);
+                tracer!(&pkg_tracker);
 
                 let mut dummy = tr_collection.clone();
+                let candidate = dummy.find_train_hold_this_pkg(package).unwrap();
 
-                let candidate = dummy.find_train_hold_this_pkg(&package.name()).unwrap();
+                // tracer!(&package);
+                // tracer!(&candidate);
 
                 advance_train(
                     &stats_collection.clone(),
@@ -280,7 +254,7 @@ pub fn advance_train(
     // if t
 
     let train_index = tr_collection
-        .find_index_of_train_with_least_time(&candidate.current_index())
+        .find_index_of_train_with_least_time(&candidate.current_index(), package)
         .unwrap();
 
     // tracer!(&package);
@@ -311,7 +285,7 @@ pub fn advance_train(
 
         // Since we already pick the same package, there is no current package in
         // tr_collection
-        if let Some(curr_train) = tr_collection.find_train_hold_this_pkg(&package.name()) {
+        if let Some(curr_train) = tr_collection.find_train_hold_this_pkg(&package) {
             for (_, loaded_pkg) in curr_train.packages.clone() {
                 // If package location is same as current station
                 if *loaded_pkg.from() == *curr_station && !loggerize.already_picked(&loaded_pkg) {
@@ -346,6 +320,7 @@ pub fn advance_train(
         // tracer!(&tr_collection.clone());
 
         // Modify current train that hold current package or advance to package location
+        // TODO: Wrong
         let current_train = tr_collection.get_train_mut(train_index).unwrap();
 
         // tracer!(&tr_collection);
@@ -810,7 +785,11 @@ impl TrainCollection {
             .min_by_key(|train| train.time)
     }
 
-    pub fn find_index_of_train_with_least_time(&mut self, station_name: &str) -> Option<usize> {
+    pub fn find_index_of_train_with_least_time(
+        &mut self,
+        station_name: &str,
+        pkg: &Package,
+    ) -> Option<usize> {
         // Find all indices of trains at the given station
         let filtered_trains: Vec<usize> = self
             .trains
@@ -818,7 +797,11 @@ impl TrainCollection {
             .enumerate()
             .filter_map(|(index, train)| {
                 if train.current == station_name {
-                    Some(index)
+                    if train.remain_capacity() > pkg.weight() {
+                        Some(index)
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
@@ -882,10 +865,10 @@ impl TrainCollection {
     }
 
     /// Find a train based on the package name
-    pub fn find_train_hold_this_pkg(&mut self, name: &str) -> Option<&mut Train> {
-        self.trains
-            .iter_mut()
-            .find(|train| train.packages.contains_key(name))
+    pub fn find_train_hold_this_pkg(&mut self, pkg: &Package) -> Option<&mut Train> {
+        self.trains.iter_mut().find(|train| {
+            train.current_index() == pkg.from() && train.packages.contains_key(pkg.name())
+        })
     }
 }
 

@@ -75,6 +75,7 @@ pub fn start_searching(
 ) {
     while !pkg_collection.is_empty() {
         if let Some((_, package)) = pkg_collection.first() {
+            // tracer!(&package);
             // tracer!("First package key: {}, value: {:?}", key, package);
             let mut dummy_tr_collection = tr_collection.clone();
 
@@ -84,7 +85,7 @@ pub fn start_searching(
             if pkg_tracker.get_status(&package).unwrap() == PackageStatus::AwaitingPickup {
                 // tracer!(&candidate);
 
-                tracer!(&pkg_tracker);
+                // tracer!(&pkg_tracker);
                 // tracer!(&tr_collection);
                 // tracer!(&nearest);
                 // tracer!(&package);
@@ -96,6 +97,8 @@ pub fn start_searching(
                     // Convert nearest index to station's name (station's name is package's index)
                     // let station_name = stats_collection.get_station_name(nearest).unwrap();
 
+                    // tracer!(&package);
+                    // tracer!(&candidate);
                     // Push station's name and package to current train's carriage
                     tr_collection.push_train_carriage(&candidate.clone(), &package);
 
@@ -126,10 +129,10 @@ pub fn start_searching(
             if pkg_tracker.get_status(&package).unwrap() == PackageStatus::InTransit {
                 // tracer!(&tr_collection);
 
-                tracer!(&pkg_tracker);
+                // tracer!(&pkg_tracker);
 
-                let mut dummy = tr_collection.clone();
-                let candidate = dummy.find_train_hold_this_pkg(package).unwrap();
+                // let mut dummy = tr_collection.clone();
+                // let candidate = dummy.find_train_hold_this_pkg(package).unwrap();
 
                 // tracer!(&package);
                 // tracer!(&candidate);
@@ -154,6 +157,9 @@ pub fn start_searching(
                 pkg_tracker
                     .update_status(&package, PackageStatus::Delivered)
                     .unwrap();
+                // tracer!(&pkg_collection);
+                // tracer!(&pkg_tracker);
+                // tracer!(&tr_collection);
 
                 pkg_collection.remove_first();
             }
@@ -267,6 +273,8 @@ pub fn advance_train(
 
     // Using where_to mean we need to calculate early for package.to(), otherwise
     // we wont reach package.to()
+    // tracer!(&where_to);
+    // tracer!(stats_collection.get_station_name(current_idx).unwrap());
     while *where_to != *stats_collection.get_station_name(current_idx).unwrap() {
         // Try pick package at current train index while moving to where_to
         try_pick_package(
@@ -285,8 +293,11 @@ pub fn advance_train(
 
         // Since we already pick the same package, there is no current package in
         // tr_collection
+        // tracer!(&tr_collection);
+        // tracer!(&package);
         if let Some(curr_train) = tr_collection.find_train_hold_this_pkg(&package) {
             for (_, loaded_pkg) in curr_train.packages.clone() {
+                // tracer!("-----");
                 // If package location is same as current station
                 if *loaded_pkg.from() == *curr_station && !loggerize.already_picked(&loaded_pkg) {
                     tr_movement.with_picked_pkage_btree(loaded_pkg.clone());
@@ -298,6 +309,8 @@ pub fn advance_train(
                 }
 
                 if pkg_tracker.get_status(&loaded_pkg).unwrap() == PackageStatus::InTransit {
+                    // tracer!(&loggerize);
+                    // tracer!(&loaded_pkg);
                     // If package destination same as next iteration.
                     // We check this early because there is no ways next iteration to happen
                     // because of our while loop condition.
@@ -305,6 +318,7 @@ pub fn advance_train(
                         tr_movement.with_drop_pkage_btree(loaded_pkg.clone());
                         loggerize.push_dropped(loaded_pkg.clone());
                         curr_train.remove_package(&loaded_pkg);
+                        // tr_movement.drop_pkgs.clear();
                     }
                 }
             }
@@ -339,6 +353,9 @@ pub fn advance_train(
 
         // TODO: Remove
         timeline.accumulate_time(&current_train.name(), numerize_distance);
+
+        // tracer!(&tr_movement);
+        // tracer!(&tr_collection);
 
         println!("\x1b[0;33m{}\x1b[0m", &tr_movement);
 
@@ -866,9 +883,9 @@ impl TrainCollection {
 
     /// Find a train based on the package name
     pub fn find_train_hold_this_pkg(&mut self, pkg: &Package) -> Option<&mut Train> {
-        self.trains.iter_mut().find(|train| {
-            train.current_index() == pkg.from() && train.packages.contains_key(pkg.name())
-        })
+        self.trains
+            .iter_mut()
+            .find(|train| train.packages.contains_key(pkg.name()))
     }
 }
 

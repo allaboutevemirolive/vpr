@@ -129,7 +129,6 @@ mod test_output {
         }
 
         let mut train_movement = TrainMovement::new();
-        // let package_candidates = PackageCandidates::new();
 
         let mut package_tracker = PackageTracker::new();
 
@@ -144,9 +143,9 @@ mod test_output {
 
         let mut loggerize = Logger::new();
 
-        tracer!(&graph);
-        tracer!(&train_collection);
-        tracer!(&station_collection);
+        // tracer!(&graph);
+        // tracer!(&train_collection);
+        // tracer!(&station_collection);
 
         start_searching(
             &mut package_collection,
@@ -428,7 +427,6 @@ mod test_output {
         }
 
         let mut train_movement = TrainMovement::new();
-        // let package_candidates = PackageCandidates::new();
 
         let mut package_tracker = PackageTracker::new();
 
@@ -443,9 +441,9 @@ mod test_output {
 
         let mut loggerize = Logger::new();
 
-        tracer!(&graph);
-        tracer!(&train_collection);
-        tracer!(&station_collection);
+        // tracer!(&graph);
+        // tracer!(&train_collection);
+        // tracer!(&station_collection);
 
         start_searching(
             &mut package_collection,

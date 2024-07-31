@@ -3,7 +3,7 @@ mod test_output {
     use crate::*;
 
     // Input:
-
+    //
     // stations: [
     //   'A', 'B', 'C',
     //   'D', 'E', 'F',
@@ -21,7 +21,7 @@ mod test_output {
     // trains: [ 'Q1,65,E', 'Q2,57,G', 'Q3,46,F' ]
 
     // Output:
-
+    //
     // 'W=0, T=Q1, N1=E, P1=[], N2=D, P2=[], L=[]',
     // 'W=32, T=Q1, N1=D, P1=[K1], N2=C, P2=[], L=[K1]',
     // 'W=80, T=Q1, N1=C, P1=[], N2=B, P2=[], L=[K1]',
@@ -126,7 +126,6 @@ mod test_output {
 
         let mut loggerize = Logger::new();
 
-        // tracer!(&graph);
         println!();
         println!("Input: ");
         println!();
@@ -153,32 +152,18 @@ mod test_output {
     }
 
     // Input:
-
-    // // example input
-    // 3		// number of stations
-    // A		// station name
-    // B		// station name
-    // C		// station name
-
-    // 2		// number of edges
-    // E1,A,B,30	// route from A to B that takes 30 minutes
-    // E2,B,C,10	// route from B to C that takes 10 minutes
-
-    // 1		// number of deliveries to be performed
-    // K1,5,A,C	// package K1 with weight 5 located currently at station A that must be delivered to station C
-
-    // 1		// number of trains
-    // Q1,6,B		// train Q1 with capacity 6 located at station B
-
+    //
+    // Stations: A, B, C
+    // Edges: ['E1',A,B,30], ['E2',B,C,10]
+    // Packages: ['K1',5,A,C]
+    // Trains: ['Q1',6,B]
+    //
     // Output:
-
-    // // Move Q1 to A via E1, takes 30 minutes.
+    //
     // W=0, T=Q1, N1=B, P1=[], N2=A, P2=[]
-    // // Now move back to B. Takes 30 minutes.
     // W=30, T=Q1, N1=A, P1=[K1], N2=B, P2=[]
-    // // Move to C and drop off - takes 10 minutes.
     // W=60, T=Q1, N1=B, P1=[], N2=C, P2=[K1]
-    // // Takes 70 minutes total.
+    //
 
     // cargo test test_second -- --nocapture
     #[test]
@@ -445,10 +430,6 @@ mod test_output {
 
         let mut loggerize = Logger::new();
 
-        // tracer!(&graph);
-        // tracer!(&train_collection);
-        // tracer!(&station_collection);
-
         println!();
         println!("Input: ");
         println!();
@@ -473,6 +454,26 @@ mod test_output {
         );
         println!();
     }
+
+    // Input:
+    //
+    // stations: [ 'A', 'B', 'C', 'D', 'E', 'F' ],
+    // edges: [ 'E1,A,B,45', 'E2,B,C,29', 'E3,C,D,88', 'E4,D,E,89', 'E5,E,F,50' ],
+    // deliveries: [ 'K1,60,B,E', 'K2,25,B,D', 'K3,9,F,C' ],
+    // trains: [ 'Q1,68,C', 'Q2,69,B', 'Q3,79,C' ]
+
+    // Output:
+    //
+    // 'W=0, T=Q2, N1=B, P1=[K1], N2=C, P2=[], L=[K1]',
+    // 'W=29, T=Q2, N1=C, P1=[], N2=D, P2=[], L=[K1]',
+    // 'W=117, T=Q2, N1=D, P1=[], N2=E, P2=[K1], L=[]',
+    // 'W=0, T=Q1, N1=C, P1=[], N2=B, P2=[], L=[]',
+    // 'W=29, T=Q1, N1=B, P1=[K2], N2=C, P2=[], L=[K2]',
+    // 'W=58, T=Q1, N1=C, P1=[], N2=D, P2=[K2], L=[]',
+    // 'W=206, T=Q2, N1=E, P1=[], N2=F, P2=[], L=[]',
+    // 'W=256, T=Q2, N1=F, P1=[K3], N2=E, P2=[], L=[K3]',
+    // 'W=306, T=Q2, N1=E, P1=[], N2=D, P2=[], L=[K3]',
+    // 'W=395, T=Q2, N1=D, P1=[], N2=C, P2=[K3], L=[]'
 
     // cargo test test_fourth -- --nocapture
     #[test]
@@ -577,7 +578,6 @@ mod test_output {
 
         let mut loggerize = Logger::new();
 
-        // tracer!(&graph);
         println!();
         println!("Input: ");
         println!();

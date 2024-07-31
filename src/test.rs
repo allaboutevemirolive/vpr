@@ -473,4 +473,133 @@ mod test_output {
         );
         println!();
     }
+
+    // cargo test test_fourth -- --nocapture
+    #[test]
+    fn test_fourth() {
+        let mut station_collection = StationCollection::new();
+        station_collection.add_station("A".to_string());
+        station_collection.add_station("B".to_string());
+        station_collection.add_station("C".to_string());
+        station_collection.add_station("D".to_string());
+        station_collection.add_station("E".to_string());
+        station_collection.add_station("F".to_string());
+
+        let mut edge_storage = EdgeStorage::new();
+        edge_storage.push("E1".to_string(), "A".to_string(), "B".to_string(), 45);
+        edge_storage.push("E2".to_string(), "B".to_string(), "C".to_string(), 29);
+        edge_storage.push("E3".to_string(), "C".to_string(), "D".to_string(), 88);
+        edge_storage.push("E4".to_string(), "D".to_string(), "E".to_string(), 89);
+        edge_storage.push("E5".to_string(), "E".to_string(), "F".to_string(), 50);
+
+        let mut package_collection = PackageCollection::new();
+        package_collection.add_package(
+            "K1".to_string(),
+            60,
+            "B".to_string(),
+            "E".to_string(),
+            PackageStatus::AwaitingPickup,
+        );
+
+        package_collection.add_package(
+            "K2".to_string(),
+            25,
+            "B".to_string(),
+            "D".to_string(),
+            PackageStatus::AwaitingPickup,
+        );
+
+        package_collection.add_package(
+            "K3".to_string(),
+            9,
+            "F".to_string(),
+            "C".to_string(),
+            PackageStatus::AwaitingPickup,
+        );
+
+        let mut train_collection = TrainCollection::new();
+        train_collection.add_train(
+            "Q1".to_string(),
+            68,
+            68,
+            "C".to_string(),
+            "C".to_string(),
+            Vec::new(),
+            0,
+        );
+
+        train_collection.add_train(
+            "Q2".to_string(),
+            69,
+            69,
+            "B".to_string(),
+            "B".to_string(),
+            Vec::new(),
+            0,
+        );
+
+        train_collection.add_train(
+            "Q3".to_string(),
+            79,
+            79,
+            "C".to_string(),
+            "C".to_string(),
+            Vec::new(),
+            0,
+        );
+
+        // Configuration
+
+        let mut graph = Graph::new();
+        graph.init_key(&station_collection);
+        graph.init_value(&edge_storage);
+
+        let mut distance_map = DistanceMap::new();
+        distance_map.init_key_value(graph.clone(), edge_storage.clone());
+
+        let mut timeline = Timeline::new();
+        for tr in train_collection.iter_mut() {
+            timeline.insert(tr.name().to_string(), 0);
+        }
+
+        let mut train_movement = TrainMovement::new();
+
+        let mut package_tracker = PackageTracker::new();
+
+        for pkg in package_collection.iter() {
+            package_tracker.add_package(pkg.clone(), PackageStatus::AwaitingPickup);
+        }
+
+        let mut package_name = PackageName::new();
+        for pkg in package_collection.iter() {
+            package_name.add_name(pkg.name().to_string());
+        }
+
+        let mut loggerize = Logger::new();
+
+        // tracer!(&graph);
+        println!();
+        println!("Input: ");
+        println!();
+        println!("{}", &station_collection);
+        println!("{}", &edge_storage.clone());
+        println!("{}", &package_collection);
+        println!("{}", &train_collection);
+        println!();
+        println!("Output: ");
+        println!();
+
+        start_searching(
+            &mut package_collection,
+            &mut train_collection,
+            &station_collection,
+            graph,
+            &mut train_movement,
+            &mut distance_map,
+            &mut timeline,
+            package_tracker,
+            &mut loggerize,
+        );
+        println!();
+    }
 }

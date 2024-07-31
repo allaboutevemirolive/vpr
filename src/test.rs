@@ -3,7 +3,7 @@ mod test_output {
     use crate::*;
 
     // Input:
-
+    //
     // stations: [
     //   'A', 'B', 'C',
     //   'D', 'E', 'F',
@@ -21,7 +21,7 @@ mod test_output {
     // trains: [ 'Q1,65,E', 'Q2,57,G', 'Q3,46,F' ]
 
     // Output:
-
+    //
     // 'W=0, T=Q1, N1=E, P1=[], N2=D, P2=[], L=[]',
     // 'W=32, T=Q1, N1=D, P1=[K1], N2=C, P2=[], L=[K1]',
     // 'W=80, T=Q1, N1=C, P1=[], N2=B, P2=[], L=[K1]',
@@ -126,7 +126,6 @@ mod test_output {
 
         let mut loggerize = Logger::new();
 
-        // tracer!(&graph);
         println!();
         println!("Input: ");
         println!();
@@ -153,32 +152,18 @@ mod test_output {
     }
 
     // Input:
-
-    // // example input
-    // 3		// number of stations
-    // A		// station name
-    // B		// station name
-    // C		// station name
-
-    // 2		// number of edges
-    // E1,A,B,30	// route from A to B that takes 30 minutes
-    // E2,B,C,10	// route from B to C that takes 10 minutes
-
-    // 1		// number of deliveries to be performed
-    // K1,5,A,C	// package K1 with weight 5 located currently at station A that must be delivered to station C
-
-    // 1		// number of trains
-    // Q1,6,B		// train Q1 with capacity 6 located at station B
-
+    //
+    // Stations: A, B, C
+    // Edges: ['E1',A,B,30], ['E2',B,C,10]
+    // Packages: ['K1',5,A,C]
+    // Trains: ['Q1',6,B]
+    //
     // Output:
-
-    // // Move Q1 to A via E1, takes 30 minutes.
+    //
     // W=0, T=Q1, N1=B, P1=[], N2=A, P2=[]
-    // // Now move back to B. Takes 30 minutes.
     // W=30, T=Q1, N1=A, P1=[K1], N2=B, P2=[]
-    // // Move to C and drop off - takes 10 minutes.
     // W=60, T=Q1, N1=B, P1=[], N2=C, P2=[K1]
-    // // Takes 70 minutes total.
+    //
 
     // cargo test test_second -- --nocapture
     #[test]
@@ -445,9 +430,153 @@ mod test_output {
 
         let mut loggerize = Logger::new();
 
-        // tracer!(&graph);
-        // tracer!(&train_collection);
-        // tracer!(&station_collection);
+        println!();
+        println!("Input: ");
+        println!();
+        println!("{}", &station_collection);
+        println!("{}", &edge_storage.clone());
+        println!("{}", &package_collection);
+        println!("{}", &train_collection);
+        println!();
+        println!("Output: ");
+        println!();
+
+        start_searching(
+            &mut package_collection,
+            &mut train_collection,
+            &station_collection,
+            graph,
+            &mut train_movement,
+            &mut distance_map,
+            &mut timeline,
+            package_tracker,
+            &mut loggerize,
+        );
+        println!();
+    }
+
+    // Input:
+    //
+    // stations: [ 'A', 'B', 'C', 'D', 'E', 'F' ],
+    // edges: [ 'E1,A,B,45', 'E2,B,C,29', 'E3,C,D,88', 'E4,D,E,89', 'E5,E,F,50' ],
+    // deliveries: [ 'K1,60,B,E', 'K2,25,B,D', 'K3,9,F,C' ],
+    // trains: [ 'Q1,68,C', 'Q2,69,B', 'Q3,79,C' ]
+
+    // Output:
+    //
+    // 'W=0, T=Q2, N1=B, P1=[K1], N2=C, P2=[], L=[K1]',
+    // 'W=29, T=Q2, N1=C, P1=[], N2=D, P2=[], L=[K1]',
+    // 'W=117, T=Q2, N1=D, P1=[], N2=E, P2=[K1], L=[]',
+    // 'W=0, T=Q1, N1=C, P1=[], N2=B, P2=[], L=[]',
+    // 'W=29, T=Q1, N1=B, P1=[K2], N2=C, P2=[], L=[K2]',
+    // 'W=58, T=Q1, N1=C, P1=[], N2=D, P2=[K2], L=[]',
+    // 'W=206, T=Q2, N1=E, P1=[], N2=F, P2=[], L=[]',
+    // 'W=256, T=Q2, N1=F, P1=[K3], N2=E, P2=[], L=[K3]',
+    // 'W=306, T=Q2, N1=E, P1=[], N2=D, P2=[], L=[K3]',
+    // 'W=395, T=Q2, N1=D, P1=[], N2=C, P2=[K3], L=[]'
+
+    // cargo test test_fourth -- --nocapture
+    #[test]
+    fn test_fourth() {
+        let mut station_collection = StationCollection::new();
+        station_collection.add_station("A".to_string());
+        station_collection.add_station("B".to_string());
+        station_collection.add_station("C".to_string());
+        station_collection.add_station("D".to_string());
+        station_collection.add_station("E".to_string());
+        station_collection.add_station("F".to_string());
+
+        let mut edge_storage = EdgeStorage::new();
+        edge_storage.push("E1".to_string(), "A".to_string(), "B".to_string(), 45);
+        edge_storage.push("E2".to_string(), "B".to_string(), "C".to_string(), 29);
+        edge_storage.push("E3".to_string(), "C".to_string(), "D".to_string(), 88);
+        edge_storage.push("E4".to_string(), "D".to_string(), "E".to_string(), 89);
+        edge_storage.push("E5".to_string(), "E".to_string(), "F".to_string(), 50);
+
+        let mut package_collection = PackageCollection::new();
+        package_collection.add_package(
+            "K1".to_string(),
+            60,
+            "B".to_string(),
+            "E".to_string(),
+            PackageStatus::AwaitingPickup,
+        );
+
+        package_collection.add_package(
+            "K2".to_string(),
+            25,
+            "B".to_string(),
+            "D".to_string(),
+            PackageStatus::AwaitingPickup,
+        );
+
+        package_collection.add_package(
+            "K3".to_string(),
+            9,
+            "F".to_string(),
+            "C".to_string(),
+            PackageStatus::AwaitingPickup,
+        );
+
+        let mut train_collection = TrainCollection::new();
+        train_collection.add_train(
+            "Q1".to_string(),
+            68,
+            68,
+            "C".to_string(),
+            "C".to_string(),
+            Vec::new(),
+            0,
+        );
+
+        train_collection.add_train(
+            "Q2".to_string(),
+            69,
+            69,
+            "B".to_string(),
+            "B".to_string(),
+            Vec::new(),
+            0,
+        );
+
+        train_collection.add_train(
+            "Q3".to_string(),
+            79,
+            79,
+            "C".to_string(),
+            "C".to_string(),
+            Vec::new(),
+            0,
+        );
+
+        // Configuration
+
+        let mut graph = Graph::new();
+        graph.init_key(&station_collection);
+        graph.init_value(&edge_storage);
+
+        let mut distance_map = DistanceMap::new();
+        distance_map.init_key_value(graph.clone(), edge_storage.clone());
+
+        let mut timeline = Timeline::new();
+        for tr in train_collection.iter_mut() {
+            timeline.insert(tr.name().to_string(), 0);
+        }
+
+        let mut train_movement = TrainMovement::new();
+
+        let mut package_tracker = PackageTracker::new();
+
+        for pkg in package_collection.iter() {
+            package_tracker.add_package(pkg.clone(), PackageStatus::AwaitingPickup);
+        }
+
+        let mut package_name = PackageName::new();
+        for pkg in package_collection.iter() {
+            package_name.add_name(pkg.name().to_string());
+        }
+
+        let mut loggerize = Logger::new();
 
         println!();
         println!("Input: ");

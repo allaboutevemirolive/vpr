@@ -1055,7 +1055,7 @@ impl Edge {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct EdgeStorage {
     edges: Vec<Edge>,
 }

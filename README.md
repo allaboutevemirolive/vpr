@@ -20,4 +20,5 @@ To execute the tests, use the following commands:
 cargo test test_first -- --nocapture
 cargo test test_second -- --nocapture
 cargo test test_third -- --nocapture
+cargo test test_fourth -- --nocapture
 ```
